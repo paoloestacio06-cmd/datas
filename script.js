@@ -1,6 +1,6 @@
-// ***********************
+// =======================
 // INDEXEDDB SETUP
-// ***********************
+// =======================
 let db;
 const request = indexedDB.open('GalleryDB', 1);
 
@@ -20,10 +20,12 @@ request.onerror = function(event) {
     alert('IndexedDB error: ' + event.target.errorCode);
 };
 
-// Track selected images
+// =======================
+// TRACK SELECTED IMAGES
+// =======================
 let selectedImages = new Set();
 
-// DOM Elements
+// DOM ELEMENTS
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const takePictureBtn = document.getElementById('takePictureBtn');
@@ -34,35 +36,37 @@ const selectedImagesEl = document.getElementById('selectedImages');
 const searchInput = document.getElementById('searchInput');
 const noResults = document.getElementById('noResults');
 
-// Modal Elements
+// MODAL ELEMENTS
 const imageModal = document.getElementById('imageModal');
 const modalClose = document.getElementById('modalClose');
 const modalImage = document.getElementById('modalImage');
 
-// Camera Elements
+// CAMERA ELEMENTS
 const cameraModal = document.getElementById('cameraModal');
 const cameraVideo = document.getElementById('cameraVideo');
 const snapBtn = document.getElementById('snapBtn');
 const closeCameraBtn = document.getElementById('closeCameraBtn');
+const switchCameraBtn = document.getElementById('switchCameraBtn');
 const cameraCanvas = document.getElementById('cameraCanvas');
 
-// ***********************
+let currentStream = null;
+let usingFrontCamera = true; // start with front camera
+
+// =======================
 // UTILITIES
-// ***********************
+// =======================
 function updateSelectedCount() {
     selectedImagesEl.textContent = selectedImages.size;
 }
 
-// ***********************
+// =======================
 // INDEXEDDB OPERATIONS
-// ***********************
+// =======================
 function addImage(imageObj) {
     const transaction = db.transaction(['images'], 'readwrite');
     const store = transaction.objectStore('images');
     store.add(imageObj);
-    transaction.oncomplete = () => {
-        loadImages(searchInput.value);
-    };
+    transaction.oncomplete = () => loadImages(searchInput.value);
 }
 
 function deleteImage(id) {
@@ -80,26 +84,21 @@ function updateImage(imageObj) {
     const transaction = db.transaction(['images'], 'readwrite');
     const store = transaction.objectStore('images');
     store.put(imageObj);
-    transaction.oncomplete = () => {
-        loadImages(searchInput.value);
-    };
+    transaction.oncomplete = () => loadImages(searchInput.value);
 }
 
 function getAllImages(callback) {
     const transaction = db.transaction(['images'], 'readonly');
     const store = transaction.objectStore('images');
     const request = store.getAll();
-    request.onsuccess = () => {
-        callback(request.result);
-    };
+    request.onsuccess = () => callback(request.result);
 }
 
-// ***********************
-// RENDER FUNCTION
-// ***********************
+// =======================
+// RENDER IMAGES
+// =======================
 function renderImages(imagesArray, filter = '') {
     imagesGrid.innerHTML = '';
-
     const filtered = imagesArray.filter(img =>
         img.id.toLowerCase().includes(filter.toLowerCase()) || img.date.includes(filter)
     );
@@ -155,9 +154,7 @@ function renderImages(imagesArray, filter = '') {
         deleteBtn.style.cursor = 'pointer';
         deleteBtn.addEventListener('click', e => {
             e.stopPropagation();
-            if (confirm('Delete this image?')) {
-                deleteImage(img.id);
-            }
+            if (confirm('Delete this image?')) deleteImage(img.id);
         });
 
         // Edit button
@@ -206,16 +203,16 @@ function renderImages(imagesArray, filter = '') {
     });
 }
 
-// ***********************
-// LOAD IMAGES FROM DB
-// ***********************
+// =======================
+// LOAD IMAGES
+// =======================
 function loadImages(filter = '') {
     getAllImages(imagesArray => renderImages(imagesArray, filter));
 }
 
-// ***********************
-// UPLOAD HANDLER (filename as ID, auto-rename duplicates)
-// ***********************
+// =======================
+// UPLOAD HANDLER
+// =======================
 uploadBtn.addEventListener('click', () => {
     const files = fileInput.files;
     if (!files.length) return;
@@ -224,8 +221,7 @@ uploadBtn.addEventListener('click', () => {
         Array.from(files).forEach(file => {
             const reader = new FileReader();
             reader.onload = e => {
-                let fileName = file.name.replace(/\.[^/.]+$/, ""); // remove extension
-                // Auto rename if duplicate
+                let fileName = file.name.replace(/\.[^/.]+$/, "");
                 let finalID = fileName;
                 let counter = 1;
                 while (existingImages.some(img => img.id === finalID)) {
@@ -246,30 +242,35 @@ uploadBtn.addEventListener('click', () => {
     fileInput.value = '';
 });
 
-// ***********************
+// =======================
 // SEARCH HANDLER
-// ***********************
-searchInput.addEventListener('input', e => {
-    loadImages(e.target.value);
-});
+// =======================
+searchInput.addEventListener('input', e => loadImages(e.target.value));
 
-// ***********************
+// =======================
 // MODAL HANDLER
-// ***********************
-modalClose.addEventListener('click', () => {
-    imageModal.classList.remove('active');
-});
+// =======================
+modalClose.addEventListener('click', () => imageModal.classList.remove('active'));
 
-// ***********************
-// CAMERA HANDLER
-// ***********************
-takePictureBtn.addEventListener('click', () => {
-    cameraModal.style.display = 'flex';
-    navigator.mediaDevices.getUserMedia({ video: true })
+// =======================
+// CAMERA FUNCTIONS
+// =======================
+function startCamera(useFront) {
+    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+
+    const constraints = { video: { facingMode: useFront ? 'user' : 'environment' } };
+
+    navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
+            currentStream = stream;
             cameraVideo.srcObject = stream;
         })
         .catch(err => alert('Cannot access camera: ' + err));
+}
+
+takePictureBtn.addEventListener('click', () => {
+    cameraModal.style.display = 'flex';
+    startCamera(usingFrontCamera);
 });
 
 snapBtn.addEventListener('click', () => {
@@ -279,28 +280,29 @@ snapBtn.addEventListener('click', () => {
 
     const imageData = cameraCanvas.toDataURL('image/png');
     const timestamp = new Date().getTime();
-    const newImage = {
+    addImage({
         id: `camera_${timestamp}`,
         date: new Date().toISOString().split('T')[0],
         image: imageData
-    };
-    addImage(newImage);
+    });
 
-    // stop camera
-    const stream = cameraVideo.srcObject;
-    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
     cameraVideo.srcObject = null;
     cameraModal.style.display = 'none';
+});
+
+switchCameraBtn.addEventListener('click', () => {
+    usingFrontCamera = !usingFrontCamera;
+    startCamera(usingFrontCamera);
 });
 
 closeCameraBtn.addEventListener('click', () => {
-    const stream = cameraVideo.srcObject;
-    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
     cameraVideo.srcObject = null;
     cameraModal.style.display = 'none';
 });
 
-// ***********************
+// =======================
 // INITIAL LOAD
-// ***********************
+// =======================
 updateSelectedCount();
