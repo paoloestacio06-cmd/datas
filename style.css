@@ -174,6 +174,12 @@ body {
     margin-bottom: 20px;
     transition: all 0.3s;
     background: white;
+    cursor: pointer;
+}
+
+.drop-zone:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
 }
 
 .drop-zone.dragging {
@@ -215,7 +221,6 @@ body {
 }
 
 .image-card.selected {
-    ring: 3px solid #3b82f6;
     box-shadow: 0 0 0 3px #3b82f6;
 }
 
@@ -288,6 +293,7 @@ body {
     justify-content: center;
     color: white;
     font-size: 14px;
+    z-index: 5;
 }
 
 .image-card.selected .selected-check {
@@ -349,6 +355,11 @@ body {
     color: white;
     font-size: 24px;
     cursor: pointer;
+    transition: background 0.2s;
+}
+
+.modal-close:hover {
+    background: rgba(255,255,255,0.2);
 }
 
 #modalImage {
@@ -376,7 +387,7 @@ body {
 }
 
 /* Camera Modal */
-.camera-content, .edit-content {
+.camera-content, .edit-content, .delete-content {
     background: white;
     border-radius: 16px;
     padding: 24px;
@@ -384,9 +395,14 @@ body {
     width: 100%;
 }
 
-.camera-content h2, .edit-content h2 {
+.camera-content h2, .edit-content h2, .delete-content h2 {
     margin-bottom: 16px;
     color: #1a1a2e;
+}
+
+.delete-content p {
+    color: #6b7280;
+    margin-bottom: 20px;
 }
 
 #cameraVideo {
@@ -395,11 +411,15 @@ body {
     background: #000;
 }
 
-.camera-buttons, .edit-buttons {
+.camera-buttons, .edit-buttons, .delete-buttons {
     display: flex;
     gap: 12px;
     margin-top: 16px;
     justify-content: center;
+}
+
+.delete-buttons {
+    justify-content: flex-end;
 }
 
 /* Edit Modal */
@@ -444,6 +464,35 @@ body {
     opacity: 1;
 }
 
+.toast.error {
+    background: #ef4444;
+}
+
+.toast.success {
+    background: #10b981;
+}
+
+/* Loading Spinner */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 /* Responsive */
 @media (max-width: 640px) {
     .search-actions {
@@ -462,5 +511,18 @@ body {
     .images-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
+    }
+    
+    .stats {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    
+    .stat-card {
+        padding: 12px 8px;
+    }
+    
+    .stat-value {
+        font-size: 1.25rem;
     }
 }
