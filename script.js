@@ -50,7 +50,8 @@ const switchCameraBtn = document.getElementById('switchCameraBtn');
 const cameraCanvas = document.getElementById('cameraCanvas');
 
 let currentStream = null;
-let usingFrontCamera = true; // start with front camera
+let currentDeviceId = null;
+let videoDevices = [];
 
 // =======================
 // UTILITIES
@@ -255,24 +256,53 @@ modalClose.addEventListener('click', () => imageModal.classList.remove('active')
 // =======================
 // CAMERA FUNCTIONS
 // =======================
-function startCamera(useFront) {
-    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
 
-    const constraints = { video: { facingMode: useFront ? 'user' : 'environment' } };
-
-    navigator.mediaDevices.getUserMedia(constraints)
-        .then(stream => {
-            currentStream = stream;
-            cameraVideo.srcObject = stream;
-        })
-        .catch(err => alert('Cannot access camera: ' + err));
+// Get all video devices
+async function getCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d => d.kind === 'videoinput');
 }
 
-takePictureBtn.addEventListener('click', () => {
+// Start camera by deviceId
+async function startCamera(deviceId = null) {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' }
+    };
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        cameraVideo.srcObject = stream;
+    } catch (err) {
+        alert('Cannot access camera: ' + err);
+    }
+}
+
+// Open camera modal
+takePictureBtn.addEventListener('click', async () => {
     cameraModal.style.display = 'flex';
-    startCamera(usingFrontCamera);
+    await getCameras();
+    // Start with front camera first
+    const frontCamera = videoDevices.find(d => d.label.toLowerCase().includes('front')) || videoDevices[0];
+    currentDeviceId = frontCamera.deviceId;
+    startCamera(currentDeviceId);
 });
 
+// Switch camera
+switchCameraBtn.addEventListener('click', () => {
+    if (!videoDevices.length) return;
+
+    let currentIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
+    currentIndex = (currentIndex + 1) % videoDevices.length;
+    currentDeviceId = videoDevices[currentIndex].deviceId;
+    startCamera(currentDeviceId);
+});
+
+// Capture image
 snapBtn.addEventListener('click', () => {
     cameraCanvas.width = cameraVideo.videoWidth;
     cameraCanvas.height = cameraVideo.videoHeight;
@@ -291,11 +321,7 @@ snapBtn.addEventListener('click', () => {
     cameraModal.style.display = 'none';
 });
 
-switchCameraBtn.addEventListener('click', () => {
-    usingFrontCamera = !usingFrontCamera;
-    startCamera(usingFrontCamera);
-});
-
+// Close camera
 closeCameraBtn.addEventListener('click', () => {
     if (currentStream) currentStream.getTracks().forEach(track => track.stop());
     cameraVideo.srcObject = null;
