@@ -50,8 +50,7 @@ const switchCameraBtn = document.getElementById('switchCameraBtn');
 const cameraCanvas = document.getElementById('cameraCanvas');
 
 let currentStream = null;
-let currentDeviceId = null;
-let videoDevices = [];
+let currentFacingMode = 'user'; // 'user' = front camera, 'environment' = back camera
 
 // =======================
 // UTILITIES
@@ -257,49 +256,81 @@ modalClose.addEventListener('click', () => imageModal.classList.remove('active')
 // CAMERA FUNCTIONS
 // =======================
 
-// Get all video devices
-async function getCameras() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    videoDevices = devices.filter(d => d.kind === 'videoinput');
-}
-
-// Start camera by deviceId
-async function startCamera(deviceId = null) {
+// Stop current camera stream
+function stopCamera() {
     if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
     }
+}
+
+// Start camera with specified facing mode
+async function startCamera(facingMode) {
+    // Stop any existing stream first
+    stopCamera();
 
     const constraints = {
-        video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' }
+        video: {
+            facingMode: facingMode, // 'user' for front, 'environment' for back
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        }
     };
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         currentStream = stream;
         cameraVideo.srcObject = stream;
+        currentFacingMode = facingMode;
+        
+        // Update button text to show current camera
+        updateSwitchButtonText();
+        
+        console.log('Camera started:', facingMode === 'user' ? 'Front Camera' : 'Back Camera');
     } catch (err) {
-        alert('Cannot access camera: ' + err);
+        console.error('Camera error:', err);
+        
+        // If the requested camera fails, try the other one
+        if (facingMode === 'environment') {
+            console.log('Back camera failed, trying front camera...');
+            try {
+                const fallbackStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' }
+                });
+                currentStream = fallbackStream;
+                cameraVideo.srcObject = fallbackStream;
+                currentFacingMode = 'user';
+                updateSwitchButtonText();
+            } catch (fallbackErr) {
+                alert('Cannot access any camera: ' + fallbackErr.message);
+            }
+        } else {
+            alert('Cannot access camera: ' + err.message);
+        }
     }
 }
 
-// Open camera modal
+// Update switch button text
+function updateSwitchButtonText() {
+    if (switchCameraBtn) {
+        const nextCamera = currentFacingMode === 'user' ? 'Back' : 'Front';
+        switchCameraBtn.textContent = `Switch to ${nextCamera} Camera`;
+    }
+}
+
+// Open camera modal - starts with front camera
 takePictureBtn.addEventListener('click', async () => {
     cameraModal.style.display = 'flex';
-    await getCameras();
-    // Start with front camera first
-    const frontCamera = videoDevices.find(d => d.label.toLowerCase().includes('front')) || videoDevices[0];
-    currentDeviceId = frontCamera.deviceId;
-    startCamera(currentDeviceId);
+    currentFacingMode = 'user'; // Start with front camera
+    await startCamera(currentFacingMode);
 });
 
-// Switch camera
-switchCameraBtn.addEventListener('click', () => {
-    if (!videoDevices.length) return;
-
-    let currentIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
-    currentIndex = (currentIndex + 1) % videoDevices.length;
-    currentDeviceId = videoDevices[currentIndex].deviceId;
-    startCamera(currentDeviceId);
+// Switch between front and back camera
+switchCameraBtn.addEventListener('click', async () => {
+    // Toggle facing mode
+    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    console.log('Switching camera to:', newFacingMode === 'user' ? 'Front' : 'Back');
+    await startCamera(newFacingMode);
 });
 
 // Capture image
@@ -316,14 +347,14 @@ snapBtn.addEventListener('click', () => {
         image: imageData
     });
 
-    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+    stopCamera();
     cameraVideo.srcObject = null;
     cameraModal.style.display = 'none';
 });
 
 // Close camera
 closeCameraBtn.addEventListener('click', () => {
-    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+    stopCamera();
     cameraVideo.srcObject = null;
     cameraModal.style.display = 'none';
 });
