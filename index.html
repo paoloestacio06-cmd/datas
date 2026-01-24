@@ -3,81 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Search Inventory System</title>
+    <title>Image Documentation</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>📸 Image Documentation</h1>
-            <p>Search and manage your product images</p>
-        </div>
+        <header class="header">
+            <div class="header-title">
+                <div class="logo">📸</div>
+                <div>
+                    <h1>Image Documentation</h1>
+                    <p>Search and manage your product images</p>
+                </div>
+            </div>
 
-        <!-- Search Section -->
-        <div class="search-section">
-            <div class="search-upload-container">
+            <div class="search-actions">
                 <div class="search-bar">
+                    <span class="search-icon">🔍</span>
                     <input type="text" id="searchInput" placeholder="Search images...">
                 </div>
-                <div class="upload-section">
-                    <div class="file-input-wrapper">
-                        <input type="file" id="fileInput" accept="image/*" multiple>
-                        <label for="fileInput" class="file-input-label">Choose File</label>
-                    </div>
-                    <button class="upload-btn" id="uploadBtn">Upload</button>
-                    <button class="upload-btn" id="takePictureBtn">Take Picture</button>
+                <div class="action-buttons">
+                    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+                    <button class="btn btn-primary" id="uploadBtn">📤 Upload</button>
+                    <button class="btn btn-secondary" id="takePictureBtn">📷 Camera</button>
                 </div>
             </div>
 
             <div class="stats">
-                <div class="stat-item">
-                    <div class="stat-value" id="totalImages">0</div>
-                    <div class="stat-label">Total Images</div>
+                <div class="stat-card">
+                    <span class="stat-value" id="totalImages">0</span>
+                    <span class="stat-label">Total Images</span>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="foundImages">0</div>
-                    <div class="stat-label">Found</div>
+                <div class="stat-card">
+                    <span class="stat-value" id="foundImages">0</span>
+                    <span class="stat-label">Found</span>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="selectedImages">0</div>
-                    <div class="stat-label">Selected</div>
+                <div class="stat-card">
+                    <span class="stat-value" id="selectedImages">0</span>
+                    <span class="stat-label">Selected</span>
                 </div>
             </div>
+        </header>
+
+        <div class="drop-zone" id="dropZone">
+            <span class="drop-icon">📁</span>
+            <p>Drag and drop images here, or click upload above</p>
         </div>
 
-        <!-- Drag & Drop Area -->
-        <div class="drag-drop-area" id="dragDropArea"></div>
-
-        <!-- Images Grid -->
         <div class="images-grid" id="imagesGrid"></div>
 
-        <!-- No Results -->
-        <div class="no-results" id="noResults" style="display: none;">
-            <div class="no-results-icon">🔍</div>
+        <div class="no-results" id="noResults">
+            <span class="no-results-icon">🔍</span>
             <h3>No images found</h3>
-            <p>Try a different search term or upload new images</p>
+            <p>Upload images to get started</p>
         </div>
     </div>
 
-    <!-- Image Modal -->
+    <!-- Image View Modal -->
     <div class="modal" id="imageModal">
-        <div class="modal-content">
-            <button class="modal-close" id="modalClose">×</button>
-            <img src="" alt="" class="modal-image" id="modalImage">
+        <button class="modal-close" id="modalClose">×</button>
+        <img src="" alt="" id="modalImage">
+        <div class="modal-info">
+            <h3 id="modalTitle"></h3>
+            <p id="modalDate"></p>
         </div>
     </div>
 
     <!-- Camera Modal -->
-    <div id="cameraModal" class="modal">
-        <video id="cameraVideo" autoplay></video>
-        <div class="camera-buttons">
-            <button id="snapBtn">Capture</button>
-            <button id="switchCameraBtn">Switch Camera</button>
-            <button id="closeCameraBtn">Close</button>
+    <div class="modal camera-modal" id="cameraModal">
+        <div class="camera-content">
+            <h2>Take Photo</h2>
+            <video id="cameraVideo" autoplay playsinline></video>
+            <canvas id="cameraCanvas" hidden></canvas>
+            <div class="camera-buttons">
+                <button class="btn btn-secondary" id="switchCameraBtn">🔄 Switch</button>
+                <button class="btn btn-primary" id="snapBtn">📸 Capture</button>
+                <button class="btn btn-danger" id="closeCameraBtn">✕ Close</button>
+            </div>
         </div>
-        <canvas id="cameraCanvas" style="display:none;"></canvas>
     </div>
+
+    <!-- Edit Modal -->
+    <div class="modal edit-modal" id="editModal">
+        <div class="edit-content">
+            <h2>Edit Image</h2>
+            <label>Name</label>
+            <input type="text" id="editName">
+            <label>Date</label>
+            <input type="date" id="editDate">
+            <div class="edit-buttons">
+                <button class="btn btn-secondary" id="cancelEditBtn">Cancel</button>
+                <button class="btn btn-primary" id="saveEditBtn">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
 
     <script src="script.js"></script>
 </body>
