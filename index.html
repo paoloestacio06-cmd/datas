@@ -26,14 +26,8 @@
                         <label for="fileInput" class="file-input-label">Choose File</label>
                     </div>
                     <button class="upload-btn" id="uploadBtn">Upload</button>
-                    <!-- Camera Button added -->
                     <button class="upload-btn" id="takePictureBtn">Take Picture</button>
                 </div>
-            </div>
-
-            <!-- Drag & Drop Area -->
-            <div class="drag-drop-area" id="dragDropArea">
-                <p>Drag & Drop images here or click "Choose File"</p>
             </div>
 
             <div class="stats">
@@ -52,10 +46,11 @@
             </div>
         </div>
 
+        <!-- Drag & Drop Area -->
+        <div class="drag-drop-area" id="dragDropArea"></div>
+
         <!-- Images Grid -->
-        <div class="images-grid" id="imagesGrid">
-            <!-- Image cards will be dynamically inserted here -->
-        </div>
+        <div class="images-grid" id="imagesGrid"></div>
 
         <!-- No Results -->
         <div class="no-results" id="noResults" style="display: none;">
@@ -78,6 +73,7 @@
         <video id="cameraVideo" autoplay></video>
         <div class="camera-buttons">
             <button id="snapBtn">Capture</button>
+            <button id="switchCameraBtn">Switch Camera</button>
             <button id="closeCameraBtn">Close</button>
         </div>
         <canvas id="cameraCanvas" style="display:none;"></canvas>
