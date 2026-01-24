@@ -1,7 +1,6 @@
 // =======================
 // SUPABASE CONFIGURATION
 // =======================
-// IMPORTANT: Replace these with your own Supabase credentials if needed
 const SUPABASE_URL = 'https://zvbwhxwktappxhzmytni.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2YndoeHdrdGFwcHhoem15dG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNjQxNzcsImV4cCI6MjA4NDg0MDE3N30.V-XDHkifpzmrAk_H7GT9g47ZXcmcPiwIJUEOKg502B0';
 
@@ -62,6 +61,7 @@ let currentFacingMode = 'user';
 let editingImage = null;
 let deletingImageId = null;
 let allImages = [];
+let totalImageCount = 0;
 
 // =======================
 // UTILITIES
@@ -74,8 +74,8 @@ function showToast(message, type = 'default') {
     setTimeout(() => toast.classList.remove('show', 'error', 'success'), 3000);
 }
 
-function updateStats(total, found) {
-    totalImagesEl.textContent = total;
+function updateStats(found) {
+    totalImagesEl.textContent = totalImageCount;
     foundImagesEl.textContent = found;
     selectedImagesEl.textContent = selectedImages.size;
 }
@@ -85,12 +85,24 @@ function updateStats(total, found) {
 // =======================
 async function loadImages() {
     try {
+        // Get accurate total count first (no 1000 limit)
+        const { count, error: countError } = await supabaseClient
+            .from('images')
+            .select('*', { count: 'exact', head: true });
+
+        if (countError) throw countError;
+        
+        totalImageCount = count || 0;
+
+        // Fetch images for display (limited to 1000 for performance)
         const { data, error } = await supabaseClient
             .from('images')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .range(0, 999);
 
         if (error) throw error;
+        
         allImages = data || [];
         renderImages(allImages, searchInput.value);
     } catch (error) {
@@ -212,7 +224,7 @@ function renderImages(images, filter = '') {
         img.date.includes(filter)
     );
 
-    updateStats(images.length, filtered.length);
+    updateStats(filtered.length);
 
     if (filtered.length === 0) {
         imagesGrid.innerHTML = '';
