@@ -1,28 +1,13 @@
 // =======================
-// INDEXEDDB SETUP
+// SUPABASE CONFIGURATION
 // =======================
-let db;
-let dbReady = false;
+// IMPORTANT: Replace these with your own Supabase credentials if needed
+const SUPABASE_URL = 'https://zvbwhxwktappxhzmytni.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2YndoeHdrdGFwcHhoem15dG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNjQxNzcsImV4cCI6MjA4NDg0MDE3N30.V-XDHkifpzmrAk_H7GT9g47ZXcmcPiwIJUEOKg502B0';
 
-const request = indexedDB.open('GalleryDB', 1);
-
-request.onupgradeneeded = function(event) {
-    db = event.target.result;
-    if (!db.objectStoreNames.contains('images')) {
-        const store = db.createObjectStore('images', { keyPath: 'id' });
-        store.createIndex('date', 'date', { unique: false });
-    }
-};
-
-request.onsuccess = function(event) {
-    db = event.target.result;
-    dbReady = true;
-    loadImages();
-};
-
-request.onerror = function(event) {
-    showToast('Database error: ' + event.target.errorCode);
-};
+// Initialize Supabase client
+const { createClient } = supabase;
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // =======================
 // DOM ELEMENTS
@@ -60,6 +45,11 @@ const editDate = document.getElementById('editDate');
 const saveEditBtn = document.getElementById('saveEditBtn');
 const cancelEditBtn = document.getElementById('cancelEditBtn');
 
+// Delete Elements
+const deleteModal = document.getElementById('deleteModal');
+const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+
 // Toast
 const toast = document.getElementById('toast');
 
@@ -70,15 +60,18 @@ let selectedImages = new Set();
 let currentStream = null;
 let currentFacingMode = 'user';
 let editingImage = null;
+let deletingImageId = null;
 let allImages = [];
 
 // =======================
 // UTILITIES
 // =======================
-function showToast(message) {
+function showToast(message, type = 'default') {
     toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
+    toast.className = 'toast show';
+    if (type === 'error') toast.classList.add('error');
+    if (type === 'success') toast.classList.add('success');
+    setTimeout(() => toast.classList.remove('show', 'error', 'success'), 3000);
 }
 
 function updateStats(total, found) {
@@ -88,57 +81,126 @@ function updateStats(total, found) {
 }
 
 // =======================
-// INDEXEDDB OPERATIONS
+// DATABASE OPERATIONS
 // =======================
-function addImage(imageObj) {
-    if (!dbReady) {
-        showToast('Database not ready. Please wait...');
-        return;
+async function loadImages() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('images')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        allImages = data || [];
+        renderImages(allImages, searchInput.value);
+    } catch (error) {
+        showToast('Error loading images: ' + error.message, 'error');
     }
-    
-    const transaction = db.transaction(['images'], 'readwrite');
-    const store = transaction.objectStore('images');
-    const request = store.add(imageObj);
-    
-    request.onsuccess = () => {
-        loadImages(searchInput.value);
-        showToast('Image uploaded: ' + imageObj.id);
-    };
-    
-    request.onerror = () => {
-        showToast('Error saving image');
-    };
 }
 
-function deleteImage(id) {
-    const transaction = db.transaction(['images'], 'readwrite');
-    const store = transaction.objectStore('images');
-    store.delete(id);
-    
-    transaction.oncomplete = () => {
+async function uploadImage(file, customName) {
+    try {
+        let imageUrl;
+        let fileName;
+
+        if (typeof file === 'string') {
+            // Base64 data from camera
+            const response = await fetch(file);
+            const blob = await response.blob();
+            fileName = customName || `camera_${Date.now()}`;
+            const filePath = `${Date.now()}_${fileName}.png`;
+
+            const { error: uploadError } = await supabaseClient.storage
+                .from('images')
+                .upload(filePath, blob);
+
+            if (uploadError) throw uploadError;
+
+            const { data: urlData } = supabaseClient.storage
+                .from('images')
+                .getPublicUrl(filePath);
+
+            imageUrl = urlData.publicUrl;
+        } else {
+            // File from upload
+            fileName = customName || file.name.replace(/\.[^/.]+$/, '');
+            const filePath = `${Date.now()}_${file.name}`;
+
+            const { error: uploadError } = await supabaseClient.storage
+                .from('images')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: urlData } = supabaseClient.storage
+                .from('images')
+                .getPublicUrl(filePath);
+
+            imageUrl = urlData.publicUrl;
+        }
+
+        // Check for duplicate names
+        const existingNames = new Set(allImages.map(img => img.name));
+        let finalName = fileName;
+        let counter = 1;
+        while (existingNames.has(finalName)) {
+            finalName = `${fileName}_${counter++}`;
+        }
+
+        const { error: insertError } = await supabaseClient
+            .from('images')
+            .insert({
+                name: finalName,
+                date: new Date().toISOString().split('T')[0],
+                image_url: imageUrl
+            });
+
+        if (insertError) throw insertError;
+
+        showToast(`Image uploaded: ${finalName}`, 'success');
+        await loadImages();
+        return true;
+    } catch (error) {
+        showToast('Error uploading image: ' + error.message, 'error');
+        return false;
+    }
+}
+
+async function updateImage(id, name, date) {
+    try {
+        const { error } = await supabaseClient
+            .from('images')
+            .update({ name, date })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        showToast('Image updated', 'success');
+        await loadImages();
+        return true;
+    } catch (error) {
+        showToast('Error updating image: ' + error.message, 'error');
+        return false;
+    }
+}
+
+async function deleteImage(id) {
+    try {
+        const { error } = await supabaseClient
+            .from('images')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
         selectedImages.delete(id);
-        loadImages(searchInput.value);
-        showToast('Image deleted');
-    };
-}
-
-function updateImage(imageObj) {
-    const transaction = db.transaction(['images'], 'readwrite');
-    const store = transaction.objectStore('images');
-    store.put(imageObj);
-    
-    transaction.oncomplete = () => {
-        loadImages(searchInput.value);
-        showToast('Image updated');
-    };
-}
-
-function getAllImages(callback) {
-    const transaction = db.transaction(['images'], 'readonly');
-    const store = transaction.objectStore('images');
-    const request = store.getAll();
-    
-    request.onsuccess = () => callback(request.result || []);
+        showToast('Image deleted', 'success');
+        await loadImages();
+        return true;
+    } catch (error) {
+        showToast('Error deleting image: ' + error.message, 'error');
+        return false;
+    }
 }
 
 // =======================
@@ -146,33 +208,33 @@ function getAllImages(callback) {
 // =======================
 function renderImages(images, filter = '') {
     const filtered = images.filter(img =>
-        img.id.toLowerCase().includes(filter.toLowerCase()) || 
+        img.name.toLowerCase().includes(filter.toLowerCase()) ||
         img.date.includes(filter)
     );
 
     updateStats(images.length, filtered.length);
-    
+
     if (filtered.length === 0) {
         imagesGrid.innerHTML = '';
         noResults.classList.add('show');
         return;
     }
-    
+
     noResults.classList.remove('show');
-    
+
     imagesGrid.innerHTML = filtered.map(img => `
         <div class="image-card ${selectedImages.has(img.id) ? 'selected' : ''}" data-id="${img.id}">
             <div class="selected-check">✓</div>
-            <img src="${img.image}" alt="${img.id}">
+            <img src="${img.image_url}" alt="${img.name}" loading="lazy">
             <div class="image-overlay">
                 <div class="image-info">
-                    <h4>${img.id}</h4>
+                    <h4>${img.name}</h4>
                     <p>${img.date}</p>
                 </div>
                 <div class="image-actions">
                     <button class="btn-view" onclick="viewImage('${img.id}')">👁 View</button>
                     <button class="btn-edit" onclick="openEdit('${img.id}')">✏️</button>
-                    <button class="btn-delete" onclick="confirmDelete('${img.id}')">🗑</button>
+                    <button class="btn-delete" onclick="openDelete('${img.id}')">🗑</button>
                 </div>
             </div>
         </div>
@@ -185,14 +247,6 @@ function renderImages(images, filter = '') {
             const id = card.dataset.id;
             toggleSelection(id);
         });
-    });
-}
-
-function loadImages(filter = '') {
-    if (!dbReady) return;
-    getAllImages(images => {
-        allImages = images;
-        renderImages(images, filter);
     });
 }
 
@@ -211,8 +265,8 @@ function toggleSelection(id) {
 function viewImage(id) {
     const img = allImages.find(i => i.id === id);
     if (img) {
-        modalImage.src = img.image;
-        modalTitle.textContent = img.id;
+        modalImage.src = img.image_url;
+        modalTitle.textContent = img.name;
         modalDate.textContent = img.date;
         imageModal.classList.add('active');
     }
@@ -221,49 +275,26 @@ function viewImage(id) {
 function openEdit(id) {
     editingImage = allImages.find(i => i.id === id);
     if (editingImage) {
-        editName.value = editingImage.id;
+        editName.value = editingImage.name;
         editDate.value = editingImage.date;
         editModal.classList.add('active');
     }
 }
 
-function confirmDelete(id) {
-    if (confirm('Delete this image?')) {
-        deleteImage(id);
-    }
+function openDelete(id) {
+    deletingImageId = id;
+    deleteModal.classList.add('active');
 }
 
 // =======================
 // UPLOAD HANDLER
 // =======================
-function handleFiles(files) {
-    if (!files.length || !dbReady) {
-        if (!dbReady) showToast('Please wait, database loading...');
-        return;
+async function handleFiles(files) {
+    if (!files.length) return;
+
+    for (const file of files) {
+        await uploadImage(file);
     }
-
-    const existingIds = new Set(allImages.map(img => img.id));
-
-    Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            let fileName = file.name.replace(/\.[^/.]+$/, "");
-            let finalId = fileName;
-            let counter = 1;
-
-            while (existingIds.has(finalId)) {
-                finalId = `${fileName}_${counter++}`;
-            }
-            existingIds.add(finalId);
-
-            addImage({
-                id: finalId,
-                date: new Date().toISOString().split('T')[0],
-                image: e.target.result
-            });
-        };
-        reader.readAsDataURL(file);
-    });
 
     fileInput.value = '';
 }
@@ -289,6 +320,8 @@ dropZone.addEventListener('drop', (e) => {
     handleFiles(e.dataTransfer.files);
 });
 
+dropZone.addEventListener('click', () => fileInput.click());
+
 // =======================
 // SEARCH
 // =======================
@@ -309,15 +342,24 @@ cancelEditBtn.addEventListener('click', () => {
     editingImage = null;
 });
 
-saveEditBtn.addEventListener('click', () => {
+saveEditBtn.addEventListener('click', async () => {
     if (editingImage && editName.value && editDate.value) {
-        updateImage({
-            ...editingImage,
-            id: editName.value,
-            date: editDate.value
-        });
+        await updateImage(editingImage.id, editName.value, editDate.value);
         editModal.classList.remove('active');
         editingImage = null;
+    }
+});
+
+cancelDeleteBtn.addEventListener('click', () => {
+    deleteModal.classList.remove('active');
+    deletingImageId = null;
+});
+
+confirmDeleteBtn.addEventListener('click', async () => {
+    if (deletingImageId) {
+        await deleteImage(deletingImageId);
+        deleteModal.classList.remove('active');
+        deletingImageId = null;
     }
 });
 
@@ -326,7 +368,7 @@ saveEditBtn.addEventListener('click', () => {
 // =======================
 async function startCamera(facingMode) {
     stopCamera();
-    
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -338,7 +380,7 @@ async function startCamera(facingMode) {
         if (facingMode === 'environment') {
             startCamera('user');
         } else {
-            showToast('Cannot access camera');
+            showToast('Cannot access camera', 'error');
         }
     }
 }
@@ -361,18 +403,14 @@ switchCameraBtn.addEventListener('click', () => {
     startCamera(newMode);
 });
 
-snapBtn.addEventListener('click', () => {
+snapBtn.addEventListener('click', async () => {
     cameraCanvas.width = cameraVideo.videoWidth;
     cameraCanvas.height = cameraVideo.videoHeight;
     cameraCanvas.getContext('2d').drawImage(cameraVideo, 0, 0);
-    
+
     const imageData = cameraCanvas.toDataURL('image/png');
-    addImage({
-        id: `camera_${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        image: imageData
-    });
-    
+    await uploadImage(imageData, `camera_${Date.now()}`);
+
     stopCamera();
     cameraModal.classList.remove('active');
 });
@@ -380,4 +418,11 @@ snapBtn.addEventListener('click', () => {
 closeCameraBtn.addEventListener('click', () => {
     stopCamera();
     cameraModal.classList.remove('active');
+});
+
+// =======================
+// INITIALIZE
+// =======================
+document.addEventListener('DOMContentLoaded', () => {
+    loadImages();
 });
