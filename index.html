@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,7 +10,7 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>📸 Image Inventory</h1>
+            <h1>📸 Image Documentation</h1>
             <p>Search and manage your product images</p>
         </div>
 
@@ -27,7 +26,14 @@
                         <label for="fileInput" class="file-input-label">Choose File</label>
                     </div>
                     <button class="upload-btn" id="uploadBtn">Upload</button>
+                    <!-- Camera Button added -->
+                    <button class="upload-btn" id="takePictureBtn">Take Picture</button>
                 </div>
+            </div>
+
+            <!-- Drag & Drop Area -->
+            <div class="drag-drop-area" id="dragDropArea">
+                <p>Drag & Drop images here or click "Choose File"</p>
             </div>
 
             <div class="stats">
@@ -47,7 +53,9 @@
         </div>
 
         <!-- Images Grid -->
-        <div class="images-grid" id="imagesGrid"></div>
+        <div class="images-grid" id="imagesGrid">
+            <!-- Image cards will be dynamically inserted here -->
+        </div>
 
         <!-- No Results -->
         <div class="no-results" id="noResults" style="display: none;">
@@ -57,7 +65,7 @@
         </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Image Modal -->
     <div class="modal" id="imageModal">
         <div class="modal-content">
             <button class="modal-close" id="modalClose">×</button>
@@ -65,7 +73,16 @@
         </div>
     </div>
 
-  <script src="script.js"></script>
+    <!-- Camera Modal -->
+    <div id="cameraModal" class="modal">
+        <video id="cameraVideo" autoplay></video>
+        <div class="camera-buttons">
+            <button id="snapBtn">Capture</button>
+            <button id="closeCameraBtn">Close</button>
+        </div>
+        <canvas id="cameraCanvas" style="display:none;"></canvas>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
-
