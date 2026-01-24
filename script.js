@@ -2,30 +2,31 @@
 // INDEXEDDB SETUP
 // =======================
 let db;
+let dbReady = false;
+
 const request = indexedDB.open('GalleryDB', 1);
 
 request.onupgradeneeded = function(event) {
     db = event.target.result;
-    const store = db.createObjectStore('images', { keyPath: 'id' });
-    store.createIndex('id', 'id', { unique: true });
-    store.createIndex('date', 'date', { unique: false });
+    if (!db.objectStoreNames.contains('images')) {
+        const store = db.createObjectStore('images', { keyPath: 'id' });
+        store.createIndex('date', 'date', { unique: false });
+    }
 };
 
 request.onsuccess = function(event) {
     db = event.target.result;
+    dbReady = true;
     loadImages();
 };
 
 request.onerror = function(event) {
-    alert('IndexedDB error: ' + event.target.errorCode);
+    showToast('Database error: ' + event.target.errorCode);
 };
 
 // =======================
-// TRACK SELECTED IMAGES
-// =======================
-let selectedImages = new Set();
-
 // DOM ELEMENTS
+// =======================
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const takePictureBtn = document.getElementById('takePictureBtn');
@@ -35,27 +36,54 @@ const foundImagesEl = document.getElementById('foundImages');
 const selectedImagesEl = document.getElementById('selectedImages');
 const searchInput = document.getElementById('searchInput');
 const noResults = document.getElementById('noResults');
+const dropZone = document.getElementById('dropZone');
 
-// MODAL ELEMENTS
+// Modal Elements
 const imageModal = document.getElementById('imageModal');
 const modalClose = document.getElementById('modalClose');
 const modalImage = document.getElementById('modalImage');
+const modalTitle = document.getElementById('modalTitle');
+const modalDate = document.getElementById('modalDate');
 
-// CAMERA ELEMENTS
+// Camera Elements
 const cameraModal = document.getElementById('cameraModal');
 const cameraVideo = document.getElementById('cameraVideo');
-const snapBtn = document.getElementById('snapBtn');
-const closeCameraBtn = document.getElementById('closeCameraBtn');
-const switchCameraBtn = document.getElementById('switchCameraBtn');
 const cameraCanvas = document.getElementById('cameraCanvas');
+const snapBtn = document.getElementById('snapBtn');
+const switchCameraBtn = document.getElementById('switchCameraBtn');
+const closeCameraBtn = document.getElementById('closeCameraBtn');
 
+// Edit Elements
+const editModal = document.getElementById('editModal');
+const editName = document.getElementById('editName');
+const editDate = document.getElementById('editDate');
+const saveEditBtn = document.getElementById('saveEditBtn');
+const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+// Toast
+const toast = document.getElementById('toast');
+
+// =======================
+// STATE
+// =======================
+let selectedImages = new Set();
 let currentStream = null;
-let currentFacingMode = 'user'; // 'user' = front camera, 'environment' = back camera
+let currentFacingMode = 'user';
+let editingImage = null;
+let allImages = [];
 
 // =======================
 // UTILITIES
 // =======================
-function updateSelectedCount() {
+function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function updateStats(total, found) {
+    totalImagesEl.textContent = total;
+    foundImagesEl.textContent = found;
     selectedImagesEl.textContent = selectedImages.size;
 }
 
@@ -63,20 +91,34 @@ function updateSelectedCount() {
 // INDEXEDDB OPERATIONS
 // =======================
 function addImage(imageObj) {
+    if (!dbReady) {
+        showToast('Database not ready. Please wait...');
+        return;
+    }
+    
     const transaction = db.transaction(['images'], 'readwrite');
     const store = transaction.objectStore('images');
-    store.add(imageObj);
-    transaction.oncomplete = () => loadImages(searchInput.value);
+    const request = store.add(imageObj);
+    
+    request.onsuccess = () => {
+        loadImages(searchInput.value);
+        showToast('Image uploaded: ' + imageObj.id);
+    };
+    
+    request.onerror = () => {
+        showToast('Error saving image');
+    };
 }
 
 function deleteImage(id) {
     const transaction = db.transaction(['images'], 'readwrite');
     const store = transaction.objectStore('images');
     store.delete(id);
+    
     transaction.oncomplete = () => {
         selectedImages.delete(id);
-        updateSelectedCount();
         loadImages(searchInput.value);
+        showToast('Image deleted');
     };
 }
 
@@ -84,282 +126,258 @@ function updateImage(imageObj) {
     const transaction = db.transaction(['images'], 'readwrite');
     const store = transaction.objectStore('images');
     store.put(imageObj);
-    transaction.oncomplete = () => loadImages(searchInput.value);
+    
+    transaction.oncomplete = () => {
+        loadImages(searchInput.value);
+        showToast('Image updated');
+    };
 }
 
 function getAllImages(callback) {
     const transaction = db.transaction(['images'], 'readonly');
     const store = transaction.objectStore('images');
     const request = store.getAll();
-    request.onsuccess = () => callback(request.result);
+    
+    request.onsuccess = () => callback(request.result || []);
 }
 
 // =======================
 // RENDER IMAGES
 // =======================
-function renderImages(imagesArray, filter = '') {
-    imagesGrid.innerHTML = '';
-    const filtered = imagesArray.filter(img =>
-        img.id.toLowerCase().includes(filter.toLowerCase()) || img.date.includes(filter)
+function renderImages(images, filter = '') {
+    const filtered = images.filter(img =>
+        img.id.toLowerCase().includes(filter.toLowerCase()) || 
+        img.date.includes(filter)
     );
 
-    foundImagesEl.textContent = filtered.length;
-    totalImagesEl.textContent = imagesArray.length;
-
+    updateStats(images.length, filtered.length);
+    
     if (filtered.length === 0) {
-        noResults.style.display = 'block';
-        selectedImages.clear();
-        updateSelectedCount();
+        imagesGrid.innerHTML = '';
+        noResults.classList.add('show');
         return;
-    } else {
-        noResults.style.display = 'none';
     }
+    
+    noResults.classList.remove('show');
+    
+    imagesGrid.innerHTML = filtered.map(img => `
+        <div class="image-card ${selectedImages.has(img.id) ? 'selected' : ''}" data-id="${img.id}">
+            <div class="selected-check">✓</div>
+            <img src="${img.image}" alt="${img.id}">
+            <div class="image-overlay">
+                <div class="image-info">
+                    <h4>${img.id}</h4>
+                    <p>${img.date}</p>
+                </div>
+                <div class="image-actions">
+                    <button class="btn-view" onclick="viewImage('${img.id}')">👁 View</button>
+                    <button class="btn-edit" onclick="openEdit('${img.id}')">✏️</button>
+                    <button class="btn-delete" onclick="confirmDelete('${img.id}')">🗑</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
 
-    filtered.forEach(img => {
-        const card = document.createElement('div');
-        card.classList.add('image-card');
-
-        const container = document.createElement('div');
-        container.classList.add('image-container');
-
-        const imageEl = document.createElement('img');
-        imageEl.src = img.image;
-        imageEl.alt = img.id;
-
-        container.appendChild(imageEl);
-
-        const info = document.createElement('div');
-        info.classList.add('image-info');
-
-        const idEl = document.createElement('div');
-        idEl.classList.add('image-id');
-        idEl.textContent = img.id;
-
-        const dateEl = document.createElement('div');
-        dateEl.classList.add('image-date');
-        dateEl.textContent = img.date;
-
-        info.appendChild(idEl);
-        info.appendChild(dateEl);
-
-        // Delete button
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.style.marginTop = '10px';
-        deleteBtn.style.padding = '5px 10px';
-        deleteBtn.style.border = 'none';
-        deleteBtn.style.borderRadius = '8px';
-        deleteBtn.style.background = '#f56565';
-        deleteBtn.style.color = 'white';
-        deleteBtn.style.cursor = 'pointer';
-        deleteBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            if (confirm('Delete this image?')) deleteImage(img.id);
+    // Add click handlers for selection
+    document.querySelectorAll('.image-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            const id = card.dataset.id;
+            toggleSelection(id);
         });
+    });
+}
 
-        // Edit button
-        const editBtn = document.createElement('button');
-        editBtn.textContent = 'Edit';
-        editBtn.style.marginTop = '5px';
-        editBtn.style.padding = '5px 10px';
-        editBtn.style.border = 'none';
-        editBtn.style.borderRadius = '8px';
-        editBtn.style.background = '#4299e1';
-        editBtn.style.color = 'white';
-        editBtn.style.cursor = 'pointer';
-        editBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            const newID = prompt('Enter new name/ID:', img.id);
-            const newDate = prompt('Enter new date (YYYY-MM-DD):', img.date);
-            if (newID && newDate) {
-                img.id = newID;
-                img.date = newDate;
-                updateImage(img);
-            }
-        });
-
-        info.appendChild(deleteBtn);
-        info.appendChild(editBtn);
-
-        card.appendChild(container);
-        card.appendChild(info);
-
-        // Click to select + modal
-        card.addEventListener('click', () => {
-            if (selectedImages.has(img.id)) {
-                selectedImages.delete(img.id);
-                card.style.border = 'none';
-            } else {
-                selectedImages.add(img.id);
-                card.style.border = '3px solid #667eea';
-            }
-            updateSelectedCount();
-
-            modalImage.src = img.image;
-            imageModal.classList.add('active');
-        });
-
-        imagesGrid.appendChild(card);
+function loadImages(filter = '') {
+    if (!dbReady) return;
+    getAllImages(images => {
+        allImages = images;
+        renderImages(images, filter);
     });
 }
 
 // =======================
-// LOAD IMAGES
+// IMAGE ACTIONS
 // =======================
-function loadImages(filter = '') {
-    getAllImages(imagesArray => renderImages(imagesArray, filter));
+function toggleSelection(id) {
+    if (selectedImages.has(id)) {
+        selectedImages.delete(id);
+    } else {
+        selectedImages.add(id);
+    }
+    renderImages(allImages, searchInput.value);
+}
+
+function viewImage(id) {
+    const img = allImages.find(i => i.id === id);
+    if (img) {
+        modalImage.src = img.image;
+        modalTitle.textContent = img.id;
+        modalDate.textContent = img.date;
+        imageModal.classList.add('active');
+    }
+}
+
+function openEdit(id) {
+    editingImage = allImages.find(i => i.id === id);
+    if (editingImage) {
+        editName.value = editingImage.id;
+        editDate.value = editingImage.date;
+        editModal.classList.add('active');
+    }
+}
+
+function confirmDelete(id) {
+    if (confirm('Delete this image?')) {
+        deleteImage(id);
+    }
 }
 
 // =======================
 // UPLOAD HANDLER
 // =======================
-uploadBtn.addEventListener('click', () => {
-    const files = fileInput.files;
-    if (!files.length) return;
+function handleFiles(files) {
+    if (!files.length || !dbReady) {
+        if (!dbReady) showToast('Please wait, database loading...');
+        return;
+    }
 
-    getAllImages(existingImages => {
-        Array.from(files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = e => {
-                let fileName = file.name.replace(/\.[^/.]+$/, "");
-                let finalID = fileName;
-                let counter = 1;
-                while (existingImages.some(img => img.id === finalID)) {
-                    finalID = `${fileName}_${counter++}`;
-                }
+    const existingIds = new Set(allImages.map(img => img.id));
 
-                const newImage = {
-                    id: finalID,
-                    date: new Date().toISOString().split('T')[0],
-                    image: e.target.result
-                };
-                addImage(newImage);
-            };
-            reader.readAsDataURL(file);
-        });
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            let fileName = file.name.replace(/\.[^/.]+$/, "");
+            let finalId = fileName;
+            let counter = 1;
+
+            while (existingIds.has(finalId)) {
+                finalId = `${fileName}_${counter++}`;
+            }
+            existingIds.add(finalId);
+
+            addImage({
+                id: finalId,
+                date: new Date().toISOString().split('T')[0],
+                image: e.target.result
+            });
+        };
+        reader.readAsDataURL(file);
     });
 
     fileInput.value = '';
+}
+
+uploadBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+// =======================
+// DRAG & DROP
+// =======================
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragging');
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragging');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragging');
+    handleFiles(e.dataTransfer.files);
 });
 
 // =======================
-// SEARCH HANDLER
+// SEARCH
 // =======================
-searchInput.addEventListener('input', e => loadImages(e.target.value));
+searchInput.addEventListener('input', (e) => {
+    renderImages(allImages, e.target.value);
+});
 
 // =======================
-// MODAL HANDLER
+// MODALS
 // =======================
 modalClose.addEventListener('click', () => imageModal.classList.remove('active'));
+imageModal.addEventListener('click', (e) => {
+    if (e.target === imageModal) imageModal.classList.remove('active');
+});
+
+cancelEditBtn.addEventListener('click', () => {
+    editModal.classList.remove('active');
+    editingImage = null;
+});
+
+saveEditBtn.addEventListener('click', () => {
+    if (editingImage && editName.value && editDate.value) {
+        updateImage({
+            ...editingImage,
+            id: editName.value,
+            date: editDate.value
+        });
+        editModal.classList.remove('active');
+        editingImage = null;
+    }
+});
 
 // =======================
-// CAMERA FUNCTIONS
+// CAMERA
 // =======================
+async function startCamera(facingMode) {
+    stopCamera();
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        currentStream = stream;
+        cameraVideo.srcObject = stream;
+        currentFacingMode = facingMode;
+    } catch (err) {
+        if (facingMode === 'environment') {
+            startCamera('user');
+        } else {
+            showToast('Cannot access camera');
+        }
+    }
+}
 
-// Stop current camera stream
 function stopCamera() {
     if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
         currentStream = null;
     }
+    cameraVideo.srcObject = null;
 }
 
-// Start camera with specified facing mode
-async function startCamera(facingMode) {
-    // Stop any existing stream first
-    stopCamera();
-
-    const constraints = {
-        video: {
-            facingMode: facingMode, // 'user' for front, 'environment' for back
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-        }
-    };
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        currentStream = stream;
-        cameraVideo.srcObject = stream;
-        currentFacingMode = facingMode;
-        
-        // Update button text to show current camera
-        updateSwitchButtonText();
-        
-        console.log('Camera started:', facingMode === 'user' ? 'Front Camera' : 'Back Camera');
-    } catch (err) {
-        console.error('Camera error:', err);
-        
-        // If the requested camera fails, try the other one
-        if (facingMode === 'environment') {
-            console.log('Back camera failed, trying front camera...');
-            try {
-                const fallbackStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user' }
-                });
-                currentStream = fallbackStream;
-                cameraVideo.srcObject = fallbackStream;
-                currentFacingMode = 'user';
-                updateSwitchButtonText();
-            } catch (fallbackErr) {
-                alert('Cannot access any camera: ' + fallbackErr.message);
-            }
-        } else {
-            alert('Cannot access camera: ' + err.message);
-        }
-    }
-}
-
-// Update switch button text
-function updateSwitchButtonText() {
-    if (switchCameraBtn) {
-        const nextCamera = currentFacingMode === 'user' ? 'Back' : 'Front';
-        switchCameraBtn.textContent = `Switch to ${nextCamera} Camera`;
-    }
-}
-
-// Open camera modal - starts with front camera
-takePictureBtn.addEventListener('click', async () => {
-    cameraModal.style.display = 'flex';
-    currentFacingMode = 'user'; // Start with front camera
-    await startCamera(currentFacingMode);
+takePictureBtn.addEventListener('click', () => {
+    cameraModal.classList.add('active');
+    startCamera('user');
 });
 
-// Switch between front and back camera
-switchCameraBtn.addEventListener('click', async () => {
-    // Toggle facing mode
-    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-    console.log('Switching camera to:', newFacingMode === 'user' ? 'Front' : 'Back');
-    await startCamera(newFacingMode);
+switchCameraBtn.addEventListener('click', () => {
+    const newMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    startCamera(newMode);
 });
 
-// Capture image
 snapBtn.addEventListener('click', () => {
     cameraCanvas.width = cameraVideo.videoWidth;
     cameraCanvas.height = cameraVideo.videoHeight;
     cameraCanvas.getContext('2d').drawImage(cameraVideo, 0, 0);
-
+    
     const imageData = cameraCanvas.toDataURL('image/png');
-    const timestamp = new Date().getTime();
     addImage({
-        id: `camera_${timestamp}`,
+        id: `camera_${Date.now()}`,
         date: new Date().toISOString().split('T')[0],
         image: imageData
     });
-
+    
     stopCamera();
-    cameraVideo.srcObject = null;
-    cameraModal.style.display = 'none';
+    cameraModal.classList.remove('active');
 });
 
-// Close camera
 closeCameraBtn.addEventListener('click', () => {
     stopCamera();
-    cameraVideo.srcObject = null;
-    cameraModal.style.display = 'none';
+    cameraModal.classList.remove('active');
 });
-
-// =======================
-// INITIAL LOAD
-// =======================
-updateSelectedCount();
