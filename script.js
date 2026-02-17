@@ -1,440 +1,344 @@
-// =======================
-// SUPABASE CONFIGURATION
-// =======================
-const SUPABASE_URL = 'https://zvbwhxwktappxhzmytni.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2YndoeHdrdGFwcHhoem15dG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNjQxNzcsImV4cCI6MjA4NDg0MDE3N30.V-XDHkifpzmrAk_H7GT9g47ZXcmcPiwIJUEOKg502B0';
+// ============================================
+// SUPABASE CONFIG - Connected to Lovable Cloud
+// ============================================
+const SUPABASE_URL = "https://zvbwhxwktappxhzmytni.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2YndoeHdrdGFwcHhoem15dG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNjQxNzcsImV4cCI6MjA4NDg0MDE3N30.V-XDHkifpzmrAk_H7GT9g47ZXcmcPiwIJUEOKg502B0";
 
-// Initialize Supabase client
-const { createClient } = supabase;
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// =======================
-// DOM ELEMENTS
-// =======================
-const fileInput = document.getElementById('fileInput');
-const uploadBtn = document.getElementById('uploadBtn');
-const takePictureBtn = document.getElementById('takePictureBtn');
-const imagesGrid = document.getElementById('imagesGrid');
-const totalImagesEl = document.getElementById('totalImages');
-const foundImagesEl = document.getElementById('foundImages');
-const selectedImagesEl = document.getElementById('selectedImages');
-const searchInput = document.getElementById('searchInput');
-const noResults = document.getElementById('noResults');
-const dropZone = document.getElementById('dropZone');
-
-// Modal Elements
-const imageModal = document.getElementById('imageModal');
-const modalClose = document.getElementById('modalClose');
-const modalImage = document.getElementById('modalImage');
-const modalTitle = document.getElementById('modalTitle');
-const modalDate = document.getElementById('modalDate');
-
-// Camera Elements
-const cameraModal = document.getElementById('cameraModal');
-const cameraVideo = document.getElementById('cameraVideo');
-const cameraCanvas = document.getElementById('cameraCanvas');
-const snapBtn = document.getElementById('snapBtn');
-const switchCameraBtn = document.getElementById('switchCameraBtn');
-const closeCameraBtn = document.getElementById('closeCameraBtn');
-
-// Edit Elements
-const editModal = document.getElementById('editModal');
-const editName = document.getElementById('editName');
-const editDate = document.getElementById('editDate');
-const saveEditBtn = document.getElementById('saveEditBtn');
-const cancelEditBtn = document.getElementById('cancelEditBtn');
-
-// Delete Elements
-const deleteModal = document.getElementById('deleteModal');
-const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
-
-// Toast
-const toast = document.getElementById('toast');
-
-// =======================
+// ============================================
 // STATE
-// =======================
-let selectedImages = new Set();
-let currentStream = null;
-let currentFacingMode = 'user';
-let editingImage = null;
-let deletingImageId = null;
+// ============================================
 let allImages = [];
-let totalImageCount = 0;
+let selectedImages = new Set();
+let editingId = null;
+let deletingId = null;
+let cameraStream = null;
+let isAdminView = false;
 
-// =======================
-// UTILITIES
-// =======================
-function showToast(message, type = 'default') {
-    toast.textContent = message;
-    toast.className = 'toast show';
-    if (type === 'error') toast.classList.add('error');
-    if (type === 'success') toast.classList.add('success');
-    setTimeout(() => toast.classList.remove('show', 'error', 'success'), 3000);
+// ============================================
+// SUPABASE HELPERS
+// ============================================
+const headers = {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+};
+
+async function supabaseGet(table, query = "") {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, { headers });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
 }
 
-function updateStats(found) {
-    totalImagesEl.textContent = totalImageCount;
-    foundImagesEl.textContent = found;
-    selectedImagesEl.textContent = selectedImages.size;
+async function supabaseInsert(table, data) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: "POST", headers, body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
 }
 
-// =======================
-// DATABASE OPERATIONS
-// =======================
+async function supabaseUpdate(table, id, data) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
+
+async function supabaseDelete(table, id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "DELETE", headers
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+async function supabaseUploadFile(bucket, path, blob, contentType) {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+        method: "POST",
+        headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+            "Content-Type": contentType
+        },
+        body: blob
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+// ============================================
+// LOAD IMAGES
+// ============================================
 async function loadImages() {
     try {
-        // Get accurate total count first (no 1000 limit)
-        const { count, error: countError } = await supabaseClient
-            .from('images')
-            .select('*', { count: 'exact', head: true });
-
-        if (countError) throw countError;
-        
-        totalImageCount = count || 0;
-
-        // Fetch images for display (limited to 1000 for performance)
-        const { data, error } = await supabaseClient
-            .from('images')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .range(0, 999);
-
-        if (error) throw error;
-        
-        allImages = data || [];
-        renderImages(allImages, searchInput.value);
-    } catch (error) {
-        showToast('Error loading images: ' + error.message, 'error');
+        allImages = await supabaseGet("images", "order=created_at.desc");
+        renderAll();
+    } catch (e) {
+        console.error("Load error:", e);
+        alert("Failed to load images. Check console.");
     }
 }
 
-async function uploadImage(file, customName) {
-    try {
-        let imageUrl;
-        let fileName;
-
-        if (typeof file === 'string') {
-            // Base64 data from camera
-            const response = await fetch(file);
-            const blob = await response.blob();
-            fileName = customName || `camera_${Date.now()}`;
-            const filePath = `${Date.now()}_${fileName}.png`;
-
-            const { error: uploadError } = await supabaseClient.storage
-                .from('images')
-                .upload(filePath, blob);
-
-            if (uploadError) throw uploadError;
-
-            const { data: urlData } = supabaseClient.storage
-                .from('images')
-                .getPublicUrl(filePath);
-
-            imageUrl = urlData.publicUrl;
-        } else {
-            // File from upload
-            fileName = customName || file.name.replace(/\.[^/.]+$/, '');
-            const filePath = `${Date.now()}_${file.name}`;
-
-            const { error: uploadError } = await supabaseClient.storage
-                .from('images')
-                .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
-
-            const { data: urlData } = supabaseClient.storage
-                .from('images')
-                .getPublicUrl(filePath);
-
-            imageUrl = urlData.publicUrl;
-        }
-
-        // Check for duplicate names
-        const existingNames = new Set(allImages.map(img => img.name));
-        let finalName = fileName;
-        let counter = 1;
-        while (existingNames.has(finalName)) {
-            finalName = `${fileName}_${counter++}`;
-        }
-
-        const { error: insertError } = await supabaseClient
-            .from('images')
-            .insert({
-                name: finalName,
-                date: new Date().toISOString().split('T')[0],
-                image_url: imageUrl
-            });
-
-        if (insertError) throw insertError;
-
-        showToast(`Image uploaded: ${finalName}`, 'success');
-        await loadImages();
-        return true;
-    } catch (error) {
-        showToast('Error uploading image: ' + error.message, 'error');
-        return false;
-    }
-}
-
-async function updateImage(id, name, date) {
-    try {
-        const { error } = await supabaseClient
-            .from('images')
-            .update({ name, date })
-            .eq('id', id);
-
-        if (error) throw error;
-
-        showToast('Image updated', 'success');
-        await loadImages();
-        return true;
-    } catch (error) {
-        showToast('Error updating image: ' + error.message, 'error');
-        return false;
-    }
-}
-
-async function deleteImage(id) {
-    try {
-        const { error } = await supabaseClient
-            .from('images')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-
-        selectedImages.delete(id);
-        showToast('Image deleted', 'success');
-        await loadImages();
-        return true;
-    } catch (error) {
-        showToast('Error deleting image: ' + error.message, 'error');
-        return false;
-    }
-}
-
-// =======================
-// RENDER IMAGES
-// =======================
-function renderImages(images, filter = '') {
-    const filtered = images.filter(img =>
-        img.name.toLowerCase().includes(filter.toLowerCase()) ||
-        img.date.includes(filter)
+// ============================================
+// RENDER
+// ============================================
+function renderAll() {
+    const query = document.getElementById("searchInput").value.toLowerCase();
+    const filtered = allImages.filter(img =>
+        img.name.toLowerCase().includes(query) || (img.date && img.date.includes(query))
     );
 
-    updateStats(filtered.length);
+    document.getElementById("totalCount").textContent = allImages.length;
+    document.getElementById("foundCount").textContent = filtered.length;
+    document.getElementById("selectedCount").textContent = selectedImages.size;
 
-    if (filtered.length === 0) {
-        imagesGrid.innerHTML = '';
-        noResults.classList.add('show');
+    renderGrid(filtered);
+    renderAdminTable(filtered);
+}
+
+function renderGrid(images) {
+    const grid = document.getElementById("imageGrid");
+    if (!images.length) {
+        grid.innerHTML = '<div class="empty-state"><div class="emoji">📷</div><p>No images found</p></div>';
         return;
     }
 
-    noResults.classList.remove('show');
-
-    imagesGrid.innerHTML = filtered.map(img => `
-        <div class="image-card ${selectedImages.has(img.id) ? 'selected' : ''}" data-id="${img.id}">
-            <div class="selected-check">✓</div>
-            <img src="${img.image_url}" alt="${img.name}" loading="lazy">
-            <div class="image-overlay">
-                <div class="image-info">
-                    <h4>${img.name}</h4>
-                    <p>${img.date}</p>
-                </div>
-                <div class="image-actions">
-                    <button class="btn-view" onclick="viewImage('${img.id}')">👁 View</button>
-                    <button class="btn-edit" onclick="openEdit('${img.id}')">✏️</button>
-                    <button class="btn-delete" onclick="openDelete('${img.id}')">🗑</button>
+    grid.innerHTML = images.map(img => `
+        <div class="image-card ${selectedImages.has(img.id) ? 'selected' : ''}" onclick="toggleSelect('${img.id}')">
+            <div class="check">✓</div>
+            <img src="${img.image_url}" alt="${img.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23f0f0f0%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2214%22>No Image</text></svg>'">
+            <div class="overlay">
+                <h4>${escapeHtml(img.name)}</h4>
+                <p>${img.date || 'No date'}</p>
+                <div class="actions">
+                    <button class="btn-view" onclick="event.stopPropagation(); viewImage('${img.id}')">👁 View</button>
+                    <button class="btn-edit" onclick="event.stopPropagation(); openEdit('${img.id}')">✏️</button>
+                    <button class="btn-delete" onclick="event.stopPropagation(); openDelete('${img.id}')">🗑</button>
                 </div>
             </div>
         </div>
     `).join('');
-
-    // Add click handlers for selection
-    document.querySelectorAll('.image-card').forEach(card => {
-        card.addEventListener('click', (e) => {
-            if (e.target.tagName === 'BUTTON') return;
-            const id = card.dataset.id;
-            toggleSelection(id);
-        });
-    });
 }
 
-// =======================
-// IMAGE ACTIONS
-// =======================
-function toggleSelection(id) {
-    if (selectedImages.has(id)) {
-        selectedImages.delete(id);
-    } else {
-        selectedImages.add(id);
+function renderAdminTable(images) {
+    const tbody = document.getElementById("adminTableBody");
+    if (!images.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:#888;">No images</td></tr>';
+        return;
     }
-    renderImages(allImages, searchInput.value);
+
+    tbody.innerHTML = images.map(img => `
+        <tr>
+            <td><img src="${img.image_url}" alt="${img.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect fill=%22%23f0f0f0%22 width=%2240%22 height=%2240%22/></svg>'"></td>
+            <td><input class="input" value="${escapeHtml(img.name)}" id="admin-name-${img.id}"></td>
+            <td><input class="input" type="date" value="${img.date || ''}" id="admin-date-${img.id}"></td>
+            <td>
+                <div class="admin-actions">
+                    <button class="btn btn-primary btn-sm" onclick="adminSave('${img.id}')">💾 Save</button>
+                    <button class="btn btn-danger btn-sm" onclick="openDelete('${img.id}')">🗑</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// ACTIONS
+// ============================================
+function toggleSelect(id) {
+    if (selectedImages.has(id)) selectedImages.delete(id);
+    else selectedImages.add(id);
+    renderAll();
 }
 
 function viewImage(id) {
     const img = allImages.find(i => i.id === id);
-    if (img) {
-        modalImage.src = img.image_url;
-        modalTitle.textContent = img.name;
-        modalDate.textContent = img.date;
-        imageModal.classList.add('active');
-    }
+    if (!img) return;
+    document.getElementById("viewImage").src = img.image_url;
+    document.getElementById("viewName").textContent = img.name;
+    document.getElementById("viewDate").textContent = img.date || "No date";
+    openModal("viewModal");
 }
 
 function openEdit(id) {
-    editingImage = allImages.find(i => i.id === id);
-    if (editingImage) {
-        editName.value = editingImage.name;
-        editDate.value = editingImage.date;
-        editModal.classList.add('active');
+    const img = allImages.find(i => i.id === id);
+    if (!img) return;
+    editingId = id;
+    document.getElementById("editName").value = img.name;
+    document.getElementById("editDate").value = img.date || "";
+    openModal("editModal");
+}
+
+async function saveEdit() {
+    const name = document.getElementById("editName").value.trim();
+    const date = document.getElementById("editDate").value;
+    if (!name) return alert("Name is required");
+
+    try {
+        await supabaseUpdate("images", editingId, { name, date });
+        closeModal("editModal");
+        await loadImages();
+    } catch (e) {
+        alert("Failed to save: " + e.message);
+    }
+}
+
+async function adminSave(id) {
+    const name = document.getElementById(`admin-name-${id}`).value.trim();
+    const date = document.getElementById(`admin-date-${id}`).value;
+    if (!name) return alert("Name is required");
+
+    try {
+        await supabaseUpdate("images", id, { name, date });
+        await loadImages();
+        alert("Saved!");
+    } catch (e) {
+        alert("Failed to save: " + e.message);
     }
 }
 
 function openDelete(id) {
-    deletingImageId = id;
-    deleteModal.classList.add('active');
+    deletingId = id;
+    openModal("deleteModal");
 }
 
-// =======================
-// UPLOAD HANDLER
-// =======================
-async function handleFiles(files) {
+async function confirmDelete() {
+    try {
+        await supabaseDelete("images", deletingId);
+        selectedImages.delete(deletingId);
+        closeModal("deleteModal");
+        await loadImages();
+    } catch (e) {
+        alert("Failed to delete: " + e.message);
+    }
+}
+
+// ============================================
+// FILE UPLOAD
+// ============================================
+async function handleFileUpload(event) {
+    const files = event.target.files;
     if (!files.length) return;
 
     for (const file of files) {
-        await uploadImage(file);
-    }
+        try {
+            const filePath = `${Date.now()}_${file.name}`;
+            const publicUrl = await supabaseUploadFile("images", filePath, file, file.type);
+            const name = file.name.replace(/\.[^/.]+$/, "");
 
-    fileInput.value = '';
-}
-
-uploadBtn.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-// =======================
-// DRAG & DROP
-// =======================
-dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('dragging');
-});
-
-dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('dragging');
-});
-
-dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragging');
-    handleFiles(e.dataTransfer.files);
-});
-
-dropZone.addEventListener('click', () => fileInput.click());
-
-// =======================
-// SEARCH
-// =======================
-searchInput.addEventListener('input', (e) => {
-    renderImages(allImages, e.target.value);
-});
-
-// =======================
-// MODALS
-// =======================
-modalClose.addEventListener('click', () => imageModal.classList.remove('active'));
-imageModal.addEventListener('click', (e) => {
-    if (e.target === imageModal) imageModal.classList.remove('active');
-});
-
-cancelEditBtn.addEventListener('click', () => {
-    editModal.classList.remove('active');
-    editingImage = null;
-});
-
-saveEditBtn.addEventListener('click', async () => {
-    if (editingImage && editName.value && editDate.value) {
-        await updateImage(editingImage.id, editName.value, editDate.value);
-        editModal.classList.remove('active');
-        editingImage = null;
-    }
-});
-
-cancelDeleteBtn.addEventListener('click', () => {
-    deleteModal.classList.remove('active');
-    deletingImageId = null;
-});
-
-confirmDeleteBtn.addEventListener('click', async () => {
-    if (deletingImageId) {
-        await deleteImage(deletingImageId);
-        deleteModal.classList.remove('active');
-        deletingImageId = null;
-    }
-});
-
-// =======================
-// CAMERA
-// =======================
-async function startCamera(facingMode) {
-    stopCamera();
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-        currentStream = stream;
-        cameraVideo.srcObject = stream;
-        currentFacingMode = facingMode;
-    } catch (err) {
-        if (facingMode === 'environment') {
-            startCamera('user');
-        } else {
-            showToast('Cannot access camera', 'error');
+            await supabaseInsert("images", {
+                name,
+                date: new Date().toISOString().split("T")[0],
+                image_url: publicUrl
+            });
+        } catch (e) {
+            console.error("Upload error:", e);
+            alert("Upload failed for " + file.name);
         }
     }
+
+    event.target.value = "";
+    await loadImages();
 }
 
-function stopCamera() {
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-        currentStream = null;
+// ============================================
+// CAMERA
+// ============================================
+async function openCamera() {
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        document.getElementById("cameraVideo").srcObject = cameraStream;
+        openModal("cameraModal");
+    } catch (e) {
+        alert("Camera access denied or not available.");
     }
-    cameraVideo.srcObject = null;
 }
 
-takePictureBtn.addEventListener('click', () => {
-    cameraModal.classList.add('active');
-    startCamera('user');
+async function capturePhoto() {
+    const video = document.getElementById("cameraVideo");
+    const canvas = document.getElementById("cameraCanvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    canvas.toBlob(async (blob) => {
+        try {
+            const fileName = `camera_${Date.now()}`;
+            const filePath = `${Date.now()}_${fileName}.png`;
+            const publicUrl = await supabaseUploadFile("images", filePath, blob, "image/png");
+
+            await supabaseInsert("images", {
+                name: fileName,
+                date: new Date().toISOString().split("T")[0],
+                image_url: publicUrl
+            });
+
+            closeCamera();
+            await loadImages();
+        } catch (e) {
+            alert("Capture failed: " + e.message);
+        }
+    }, "image/png");
+}
+
+function closeCamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+    }
+    closeModal("cameraModal");
+}
+
+// ============================================
+// ADMIN TOGGLE
+// ============================================
+function toggleAdmin() {
+    isAdminView = !isAdminView;
+    document.getElementById("adminPanel").style.display = isAdminView ? "block" : "none";
+    document.getElementById("imageGrid").style.display = isAdminView ? "none" : "grid";
+    document.getElementById("dropzone").style.display = isAdminView ? "none" : "block";
+    document.getElementById("adminBtn").textContent = isAdminView ? "← Gallery" : "🗄️ Admin";
+    renderAll();
+}
+
+// ============================================
+// MODAL HELPERS
+// ============================================
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+// ============================================
+// FILTER
+// ============================================
+function filterImages() { renderAll(); }
+
+// ============================================
+// DRAG & DROP
+// ============================================
+const dz = document.getElementById("dropzone");
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("dragging"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("dragging"));
+dz.addEventListener("drop", e => {
+    e.preventDefault();
+    dz.classList.remove("dragging");
+    if (e.dataTransfer.files.length) {
+        document.getElementById("fileInput").files = e.dataTransfer.files;
+        handleFileUpload({ target: { files: e.dataTransfer.files, value: "" } });
+    }
 });
 
-switchCameraBtn.addEventListener('click', () => {
-    const newMode = currentFacingMode === 'user' ? 'environment' : 'user';
-    startCamera(newMode);
-});
+// ============================================
+// UTILS
+// ============================================
+function escapeHtml(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
 
-snapBtn.addEventListener('click', async () => {
-    cameraCanvas.width = cameraVideo.videoWidth;
-    cameraCanvas.height = cameraVideo.videoHeight;
-    cameraCanvas.getContext('2d').drawImage(cameraVideo, 0, 0);
-
-    const imageData = cameraCanvas.toDataURL('image/png');
-    await uploadImage(imageData, `camera_${Date.now()}`);
-
-    stopCamera();
-    cameraModal.classList.remove('active');
-});
-
-closeCameraBtn.addEventListener('click', () => {
-    stopCamera();
-    cameraModal.classList.remove('active');
-});
-
-// =======================
-// INITIALIZE
-// =======================
-document.addEventListener('DOMContentLoaded', () => {
-    loadImages();
-});
+// ============================================
+// INIT
+// ============================================
+loadImages();
