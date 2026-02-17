@@ -7,114 +7,113 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
+    <div class="app" id="app">
+        <!-- Header -->
         <header class="header">
-            <div class="header-title">
+            <div class="header-top">
                 <div class="logo">📸</div>
                 <div>
                     <h1>Image Documentation</h1>
-                    <p>Search and manage your product images</p>
+                    <p class="subtitle">Search and manage your product images</p>
                 </div>
+                <button class="btn btn-outline" id="adminBtn" onclick="toggleAdmin()">🗄️ Admin</button>
             </div>
 
-            <div class="search-actions">
-                <div class="search-bar">
+            <div class="controls">
+                <div class="search-wrap">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="searchInput" placeholder="Search images...">
+                    <input type="text" id="searchInput" placeholder="Search images..." oninput="filterImages()">
                 </div>
-                <div class="action-buttons">
-                    <input type="file" id="fileInput" accept="image/*" multiple hidden>
-                    <button class="btn btn-primary" id="uploadBtn">📤 Upload</button>
-                    <button class="btn btn-secondary" id="takePictureBtn">📷 Camera</button>
-                </div>
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📤 Upload</button>
+                <button class="btn btn-secondary" onclick="openCamera()">📷 Camera</button>
             </div>
 
             <div class="stats">
-                <div class="stat-card">
-                    <span class="stat-value" id="totalImages">0</span>
-                    <span class="stat-label">Total Images</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value" id="foundImages">0</span>
-                    <span class="stat-label">Found</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value" id="selectedImages">0</span>
-                    <span class="stat-label">Selected</span>
-                </div>
+                <div class="stat"><span id="totalCount">0</span><small>Total</small></div>
+                <div class="stat"><span id="foundCount">0</span><small>Found</small></div>
+                <div class="stat"><span id="selectedCount">0</span><small>Selected</small></div>
             </div>
         </header>
 
-        <div class="drop-zone" id="dropZone">
-            <span class="drop-icon">📁</span>
-            <p>Drag and drop images here, or click upload above</p>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden onchange="handleFileUpload(event)">
+
+        <!-- Drop Zone -->
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+            <p>📂 Drag and drop images here, or click to upload</p>
         </div>
 
-        <div class="images-grid" id="imagesGrid"></div>
+        <!-- Image Grid (main view) -->
+        <div class="image-grid" id="imageGrid"></div>
 
-        <div class="no-results" id="noResults">
-            <span class="no-results-icon">🔍</span>
-            <h3>No images found</h3>
-            <p>Upload images to get started</p>
+        <!-- Admin Table (hidden by default) -->
+        <div class="admin-panel" id="adminPanel" style="display:none;">
+            <div class="admin-header">
+                <h2>🗄️ Database Admin</h2>
+                <button class="btn btn-secondary" onclick="toggleAdmin()">← Back</button>
+            </div>
+            <table class="admin-table">
+                <thead>
+                    <tr><th>Image</th><th>Name</th><th>Date</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="adminTableBody"></tbody>
+            </table>
         </div>
-    </div>
 
-    <!-- Image View Modal -->
-    <div class="modal" id="imageModal">
-        <button class="modal-close" id="modalClose">×</button>
-        <img src="" alt="" id="modalImage">
-        <div class="modal-info">
-            <h3 id="modalTitle"></h3>
-            <p id="modalDate"></p>
+        <!-- View Modal -->
+        <div class="modal" id="viewModal">
+            <div class="modal-content modal-large">
+                <button class="modal-close" onclick="closeModal('viewModal')">✕</button>
+                <img id="viewImage" src="" alt="">
+                <div class="modal-info">
+                    <h3 id="viewName"></h3>
+                    <p id="viewDate"></p>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <!-- Camera Modal -->
-    <div class="modal camera-modal" id="cameraModal">
-        <div class="camera-content">
-            <h2>Take Photo</h2>
-            <video id="cameraVideo" autoplay playsinline></video>
-            <canvas id="cameraCanvas" hidden></canvas>
-            <div class="camera-buttons">
-                <button class="btn btn-secondary" id="switchCameraBtn">🔄 Switch</button>
-                <button class="btn btn-primary" id="snapBtn">📸 Capture</button>
-                <button class="btn btn-danger" id="closeCameraBtn">✕ Close</button>
+        <!-- Edit Modal -->
+        <div class="modal" id="editModal">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeModal('editModal')">✕</button>
+                <h3>Edit Image</h3>
+                <label>Name</label>
+                <input type="text" id="editName" class="input">
+                <label>Date</label>
+                <input type="date" id="editDate" class="input">
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Confirm Modal -->
+        <div class="modal" id="deleteModal">
+            <div class="modal-content">
+                <h3>Delete Image</h3>
+                <p>Are you sure? This cannot be undone.</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
+                    <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Modal -->
+        <div class="modal" id="cameraModal">
+            <div class="modal-content modal-large">
+                <button class="modal-close" onclick="closeCamera()">✕</button>
+                <h3>Camera Capture</h3>
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" hidden></canvas>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+                    <button class="btn btn-secondary" onclick="closeCamera()">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Modal -->
-    <div class="modal edit-modal" id="editModal">
-        <div class="edit-content">
-            <h2>Edit Image</h2>
-            <label>Name</label>
-            <input type="text" id="editName">
-            <label>Date</label>
-            <input type="date" id="editDate">
-            <div class="edit-buttons">
-                <button class="btn btn-secondary" id="cancelEditBtn">Cancel</button>
-                <button class="btn btn-primary" id="saveEditBtn">Save</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div class="modal delete-modal" id="deleteModal">
-        <div class="delete-content">
-            <h2>Delete Image</h2>
-            <p>Are you sure you want to delete this image? This action cannot be undone.</p>
-            <div class="delete-buttons">
-                <button class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
-                <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
-
-    <!-- Supabase JS SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="script.js"></script>
 </body>
 </html>
