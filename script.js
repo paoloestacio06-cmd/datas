@@ -1,5 +1,5 @@
 // ============================================
-// SUPABASE CONFIG - Connected to Lovable Cloud
+// SUPABASE CONFIG - Connected to Cloud Database
 // ============================================
 const SUPABASE_URL = "https://zvbwhxwktappxhzmytni.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2YndoeHdrdGFwcHhoem15dG5pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNjQxNzcsImV4cCI6MjA4NDg0MDE3N30.V-XDHkifpzmrAk_H7GT9g47ZXcmcPiwIJUEOKg502B0";
@@ -16,7 +16,7 @@ const AUTH_CREDENTIALS = {
 function checkAuth() {
     const isLoggedIn = localStorage.getItem("isLoggedIn");
     const username = localStorage.getItem("username");
-    
+
     if (isLoggedIn === "true" && username) {
         showApp(username);
     } else {
@@ -39,11 +39,11 @@ function showApp(username) {
 // Handle login form submission
 document.getElementById("loginForm").addEventListener("submit", function(e) {
     e.preventDefault();
-    
+
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
     const rememberMe = document.getElementById("rememberMe").checked;
-    
+
     if (username === AUTH_CREDENTIALS.username && password === AUTH_CREDENTIALS.password) {
         if (rememberMe) {
             localStorage.setItem("isLoggedIn", "true");
@@ -52,12 +52,12 @@ document.getElementById("loginForm").addEventListener("submit", function(e) {
             sessionStorage.setItem("isLoggedIn", "true");
             sessionStorage.setItem("username", username);
         }
-        
+
         showToast("Login Successful!", "Welcome back, " + username + "!", "success");
         setTimeout(() => showApp(username), 500);
     } else {
         showToast("Login Failed", "Invalid username or password", "error");
-        
+
         // Shake animation on error
         const loginCard = document.querySelector(".login-card");
         loginCard.style.animation = "none";
@@ -72,7 +72,7 @@ function logout() {
     localStorage.removeItem("username");
     sessionStorage.removeItem("isLoggedIn");
     sessionStorage.removeItem("username");
-    
+
     showToast("Logged Out", "You have been logged out successfully", "info");
     setTimeout(() => {
         showLogin();
@@ -113,24 +113,25 @@ async function supabaseGet(table, query = "") {
     const limit = 1000; // Supabase max per request
     let hasMore = true;
     let totalFromHeader = null;
-    
-    console.log(`🔄 Starting to fetch ALL images from ${table}...`);
-    
+
+    console.log(`📄 Starting to fetch ALL images from ${table}...`);
+
     while (hasMore) {
         const url = `${SUPABASE_URL}/rest/v1/${table}?${query}&limit=${limit}&offset=${offset}`;
-        
+
         try {
-            const res = await fetch(url, { 
+            const res = await fetch(url, {
                 headers: {
                     ...headers,
                     "Prefer": "return=representation,count=exact"
                 }
             });
-            
+
             if (!res.ok) {
-                throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                const errorText = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errorText}`);
             }
-            
+
             // Get total count from Content-Range header
             const contentRange = res.headers.get('Content-Range');
             if (contentRange && !totalFromHeader) {
@@ -138,23 +139,23 @@ async function supabaseGet(table, query = "") {
                 if (match) {
                     totalFromHeader = parseInt(match[1]);
                     console.log(`📊 Supabase reports ${totalFromHeader} total records`);
-                    
+
                     // Update loading progress
                     updateLoadingProgress(0, totalFromHeader);
                 }
             }
-            
+
             const data = await res.json();
-            
+
             if (data.length > 0) {
                 allData = allData.concat(data);
                 console.log(`📦 Batch ${Math.floor(offset/limit) + 1}: Fetched ${data.length} records. Total so far: ${allData.length}`);
-                
+
                 // Update loading progress
                 if (totalFromHeader) {
                     updateLoadingProgress(allData.length, totalFromHeader);
                 }
-                
+
                 // Check if we got less than limit, meaning no more data
                 if (data.length < limit) {
                     hasMore = false;
@@ -167,13 +168,14 @@ async function supabaseGet(table, query = "") {
             }
         } catch (error) {
             console.error(`❌ Error fetching batch at offset ${offset}:`, error);
+            showToast("Database Error", "Failed to fetch images: " + error.message, "error");
             hasMore = false;
         }
     }
-    
+
     console.log(`✅ COMPLETE! Total records fetched: ${allData.length}`);
     console.log(`📊 Verification: Array length = ${allData.length}`);
-    
+
     return allData;
 }
 
@@ -186,41 +188,84 @@ function updateLoadingProgress(current, total) {
 }
 
 async function supabaseInsert(table, data) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-        method: "POST", headers, body: JSON.stringify(data)
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+            method: "POST", 
+            headers, 
+            body: JSON.stringify(data)
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Insert failed: ${errorText}`);
+        }
+        
+        return res.json();
+    } catch (error) {
+        console.error("Insert error:", error);
+        throw error;
+    }
 }
 
 async function supabaseUpdate(table, id, data) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-        method: "PATCH", headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify(data)
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+            method: "PATCH", 
+            headers: { ...headers, "Prefer": "return=representation" },
+            body: JSON.stringify(data)
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Update failed: ${errorText}`);
+        }
+        
+        return res.json();
+    } catch (error) {
+        console.error("Update error:", error);
+        throw error;
+    }
 }
 
 async function supabaseDelete(table, id) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-        method: "DELETE", headers
-    });
-    if (!res.ok) throw new Error(await res.text());
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+            method: "DELETE", 
+            headers
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Delete failed: ${errorText}`);
+        }
+    } catch (error) {
+        console.error("Delete error:", error);
+        throw error;
+    }
 }
 
 async function supabaseUploadFile(bucket, path, blob, contentType) {
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
-        method: "POST",
-        headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-            "Content-Type": contentType
-        },
-        body: blob
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+    try {
+        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+            method: "POST",
+            headers: {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+                "Content-Type": contentType
+            },
+            body: blob
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Upload failed: ${errorText}`);
+        }
+        
+        return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+    } catch (error) {
+        console.error("Upload error:", error);
+        throw error;
+    }
 }
 
 // ============================================
@@ -229,36 +274,38 @@ async function supabaseUploadFile(bucket, path, blob, contentType) {
 async function loadImages() {
     try {
         showLoading(true);
-        
+
         // Clear cache first
         allImages = [];
         selectedImages.clear();
-        
+
         console.log(`🚀 Starting image load process...`);
-        
+
         // Fetch ALL images from database with pagination
         allImages = await supabaseGet("images", "order=created_at.desc");
-        
+
         // Force array if not already
         if (!Array.isArray(allImages)) {
             console.warn("⚠️ Response is not an array, converting...");
             allImages = [];
         }
-        
+
         // Log for debugging - to verify exact count
         console.log(`✅ FINAL RESULT: Total images loaded from database: ${allImages.length}`);
-        console.log(`📝 First image:`, allImages[0]);
-        console.log(`📝 Last image:`, allImages[allImages.length - 1]);
-        
+        if (allImages.length > 0) {
+            console.log(`🔍 First image:`, allImages[0]);
+            console.log(`🔍 Last image:`, allImages[allImages.length - 1]);
+        }
+
         // Force counter update
         renderAll();
         showLoading(false);
-        
+
         // Show toast with count
         if (allImages.length > 0) {
             showToast("Gallery Loaded", `Successfully loaded ${allImages.length.toLocaleString('en-US')} image(s) from database`, "success");
         } else {
-            showToast("Gallery Empty", "No images found in database", "info");
+            showToast("Gallery Empty", "No images found in database. Upload some images to get started!", "info");
         }
     } catch (e) {
         console.error("❌ Load error:", e);
@@ -274,7 +321,7 @@ function showLoading(show) {
     const container = document.getElementById("loadingContainer");
     const grid = document.getElementById("imageGrid");
     const dropzone = document.getElementById("dropzone");
-    
+
     if (show) {
         container.style.display = "block";
         grid.style.display = "none";
@@ -300,7 +347,7 @@ function renderAll() {
     // Get search query
     const searchInput = document.getElementById("searchInput");
     const query = searchInput ? searchInput.value.toLowerCase() : "";
-    
+
     // Filter images based on search
     const filtered = allImages.filter(img =>
         img.name.toLowerCase().includes(query) || (img.date && img.date.includes(query))
@@ -310,23 +357,22 @@ function renderAll() {
     const totalCount = allImages.length;
     const foundCount = filtered.length;
     const selectedCount = selectedImages.size;
-    
+
     // Update display with proper number formatting
     const totalCountEl = document.getElementById("totalCount");
     const foundCountEl = document.getElementById("foundCount");
     const selectedCountEl = document.getElementById("selectedCount");
-    
+
     if (totalCountEl) totalCountEl.textContent = totalCount.toLocaleString('en-US');
     if (foundCountEl) foundCountEl.textContent = foundCount.toLocaleString('en-US');
     if (selectedCountEl) selectedCountEl.textContent = selectedCount.toLocaleString('en-US');
-    
-    // Debug log to verify accuracy - ALWAYS show real count
+
+    // Debug log to verify accuracy
     console.log(`📊 COUNTER UPDATE:`);
     console.log(`   - Total Images in Memory: ${totalCount}`);
     console.log(`   - Filtered/Found: ${foundCount}`);
     console.log(`   - Selected: ${selectedCount}`);
-    console.log(`   - Array Length Verification: ${allImages.length}`);
-    
+
     // Update bulk delete count
     const bulkDeleteCount = document.getElementById("bulkDeleteCount");
     if (bulkDeleteCount) {
@@ -351,7 +397,7 @@ function renderAll() {
 function renderGrid(images) {
     const grid = document.getElementById("imageGrid");
     if (!images.length) {
-        grid.innerHTML = '<div class="empty-state"><div class="emoji">📷</div><p>No images found</p></div>';
+        grid.innerHTML = '<div class="empty-state"><div class="emoji">📷</div><p>No images found</p><small>Try uploading some images or adjust your search</small></div>';
         return;
     }
 
@@ -415,7 +461,7 @@ function clearSelection() {
 function viewImage(id) {
     const img = allImages.find(i => i.id === id);
     if (!img) return;
-    
+
     currentViewImage = img;
     document.getElementById("viewImage").src = img.image_url;
     document.getElementById("viewName").textContent = img.name;
@@ -425,7 +471,7 @@ function viewImage(id) {
 
 function downloadImage() {
     if (!currentViewImage) return;
-    
+
     const link = document.createElement('a');
     link.href = currentViewImage.image_url;
     link.download = currentViewImage.name + '.jpg';
@@ -433,7 +479,7 @@ function downloadImage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     showToast("Download Started", "Your image is being downloaded", "success");
 }
 
@@ -492,7 +538,7 @@ async function confirmDelete() {
         selectedImages.delete(deletingId);
         closeModal("deleteModal");
         showToast("Deleted!", "Image has been deleted successfully", "success");
-        
+
         // Reload to get accurate count
         await loadImages();
         console.log(`🗑️ Delete complete. New total: ${allImages.length} images`);
@@ -503,22 +549,22 @@ async function confirmDelete() {
 
 async function bulkDelete() {
     if (selectedImages.size === 0) return;
-    
+
     const count = selectedImages.size;
     const confirmed = confirm(`Are you sure you want to delete ${count} selected image(s)? This action cannot be undone.`);
-    
+
     if (!confirmed) return;
-    
+
     try {
         showLoading(true);
-        const deletePromises = Array.from(selectedImages).map(id => 
+        const deletePromises = Array.from(selectedImages).map(id =>
             supabaseDelete("images", id)
         );
         await Promise.all(deletePromises);
-        
+
         selectedImages.clear();
         showToast("Bulk Delete Complete!", `Successfully deleted ${count} image(s)`, "success");
-        
+
         // Reload to get accurate count
         await loadImages();
         console.log(`🗑️ Bulk delete complete. New total: ${allImages.length} images`);
@@ -558,14 +604,14 @@ async function handleFileUpload(event) {
     }
 
     event.target.value = "";
-    
+
     // Force complete reload from database
     console.log(`📤 Upload complete. Reloading all images...`);
     await loadImages();
-    
+
     const newTotal = allImages.length;
     console.log(`📤 Upload complete. New total: ${newTotal} images`);
-    
+
     if (successCount > 0) {
         showToast("Upload Complete!", `Uploaded ${successCount} image(s). Total: ${newTotal.toLocaleString('en-US')}`, "success");
     }
@@ -579,8 +625,8 @@ async function handleFileUpload(event) {
 // ============================================
 async function openCamera() {
     try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment" } 
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" }
         });
         document.getElementById("cameraVideo").srcObject = cameraStream;
         openModal("cameraModal");
@@ -610,7 +656,7 @@ async function capturePhoto() {
 
             closeCamera();
             showToast("Photo Captured!", "Your photo has been saved successfully", "success");
-            
+
             // Reload to get accurate count
             await loadImages();
             console.log(`📸 Camera capture complete. New total: ${allImages.length} images`);
@@ -643,19 +689,19 @@ function toggleAdmin() {
 // ============================================
 // MODAL HELPERS
 // ============================================
-function openModal(id) { 
-    document.getElementById(id).classList.add("open"); 
+function openModal(id) {
+    document.getElementById(id).classList.add("open");
 }
 
-function closeModal(id) { 
-    document.getElementById(id).classList.remove("open"); 
+function closeModal(id) {
+    document.getElementById(id).classList.remove("open");
 }
 
 // ============================================
 // FILTER
 // ============================================
-function filterImages() { 
-    renderAll(); 
+function filterImages() {
+    renderAll();
 }
 
 // ============================================
@@ -672,28 +718,30 @@ async function refreshGallery() {
 // ============================================
 const dz = document.getElementById("dropzone");
 
-dz.addEventListener("click", () => {
-    document.getElementById("fileInput").click();
-});
+if (dz) {
+    dz.addEventListener("click", () => {
+        document.getElementById("fileInput").click();
+    });
 
-dz.addEventListener("dragover", e => { 
-    e.preventDefault(); 
-    dz.classList.add("dragging"); 
-});
+    dz.addEventListener("dragover", e => {
+        e.preventDefault();
+        dz.classList.add("dragging");
+    });
 
-dz.addEventListener("dragleave", () => {
-    dz.classList.remove("dragging");
-});
+    dz.addEventListener("dragleave", () => {
+        dz.classList.remove("dragging");
+    });
 
-dz.addEventListener("drop", e => {
-    e.preventDefault();
-    dz.classList.remove("dragging");
-    if (e.dataTransfer.files.length) {
-        const fileInput = document.getElementById("fileInput");
-        fileInput.files = e.dataTransfer.files;
-        handleFileUpload({ target: fileInput });
-    }
-});
+    dz.addEventListener("drop", e => {
+        e.preventDefault();
+        dz.classList.remove("dragging");
+        if (e.dataTransfer.files.length) {
+            const fileInput = document.getElementById("fileInput");
+            fileInput.files = e.dataTransfer.files;
+            handleFileUpload({ target: fileInput });
+        }
+    });
+}
 
 // ============================================
 // TOAST NOTIFICATIONS
@@ -702,13 +750,13 @@ function showToast(title, message, type = "info") {
     const container = document.getElementById("toastContainer");
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
-    
+
     const icons = {
         success: "✅",
         error: "❌",
         info: "ℹ️"
     };
-    
+
     toast.innerHTML = `
         <div class="toast-icon">${icons[type]}</div>
         <div class="toast-content">
@@ -716,9 +764,9 @@ function showToast(title, message, type = "info") {
             <div class="toast-message">${message}</div>
         </div>
     `;
-    
+
     container.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.style.animation = "slideInRight 0.3s ease-out reverse";
         setTimeout(() => {
@@ -745,12 +793,12 @@ document.addEventListener("keydown", (e) => {
         const modals = ["viewModal", "editModal", "deleteModal", "cameraModal"];
         modals.forEach(modalId => {
             const modal = document.getElementById(modalId);
-            if (modal.classList.contains("open")) {
+            if (modal && modal.classList.contains("open")) {
                 closeModal(modalId);
             }
         });
     }
-    
+
     // Ctrl/Cmd + A to select all (when not in input)
     if ((e.ctrlKey || e.metaKey) && e.key === "a" && !e.target.matches("input, textarea")) {
         e.preventDefault();
@@ -758,7 +806,7 @@ document.addEventListener("keydown", (e) => {
         renderAll();
         showToast("All Selected", `Selected ${allImages.length} image(s)`, "info");
     }
-    
+
     // Ctrl/Cmd + D to clear selection
     if ((e.ctrlKey || e.metaKey) && e.key === "d" && !e.target.matches("input, textarea")) {
         e.preventDefault();
@@ -767,6 +815,11 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ============================================
-// INIT
+// INIT - AUTO START ON PAGE LOAD
 // ============================================
-checkAuth();
+window.addEventListener('DOMContentLoaded', () => {
+    console.log("🚀 MEDGISTIX SKU System Starting...");
+    console.log("📊 Database URL:", SUPABASE_URL);
+    console.log("✅ All systems ready!");
+    checkAuth();
+});
