@@ -3,117 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Documentation</title>
+    <title> MEDGISTIX SKU - Professional Documentation System</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app" id="app">
+    <!-- Login Screen -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-logo">📸</div>
+                <h1> MEDGISTIX SKU </h1>
+                <p>Professional Documentation System</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" class="input" placeholder="Enter username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" class="input" placeholder="Enter password" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="rememberMe" checked>
+                        <span>Remember me</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block" data-testid="login-submit-button">
+                    <span>🔐 Sign In</span>
+                </button>
+                <div class="login-hint">
+                    <small>💡 Demo credentials: <strong>admin</strong> / <strong>admin123</strong></small>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="app" id="app" style="display: none;">
         <!-- Header -->
-        <header class="header">
+        <header class="header" data-testid="gallery-header">
             <div class="header-top">
                 <div class="logo">📸</div>
-                <div>
-                    <h1>Image Documentation</h1>
-                    <p class="subtitle">Search and manage your product images</p>
+                <div class="header-title">
+                    <h1> MEDGISTIX SKU</h1>
+                    <p class="subtitle">Professional Documentation System</p>
                 </div>
-                <button class="btn btn-outline" id="adminBtn" onclick="toggleAdmin()">🗄️ Admin</button>
+                <div class="header-user">
+                    <span class="user-name" id="userName">Admin</span>
+                    <button class="btn btn-secondary btn-sm" onclick="logout()" data-testid="logout-button">🚪 Logout</button>
+                </div>
             </div>
 
             <div class="controls">
                 <div class="search-wrap">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="searchInput" placeholder="Search images..." oninput="filterImages()">
+                    <input type="text" id="searchInput" placeholder="Search images by name or date..." oninput="filterImages()" class="search-input" data-testid="search-input">
                 </div>
-                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📤 Upload</button>
-                <button class="btn btn-secondary" onclick="openCamera()">📷 Camera</button>
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()" data-testid="upload-button">
+                    <span>📤 Upload</span>
+                </button>
+                <button class="btn btn-outline" onclick="openCamera()" data-testid="camera-button">
+                    <span>📷 Camera</span>
+                </button>
+                <button class="btn btn-secondary" onclick="refreshGallery()" data-testid="refresh-button" title="Refresh to get latest count">
+                    <span>🔄 Refresh</span>
+                </button>
+                <button class="btn btn-secondary" onclick="toggleAdmin()" id="adminBtn" data-testid="admin-toggle-button">
+                    <span>🗄️ Admin</span>
+                </button>
             </div>
 
             <div class="stats">
-                <div class="stat"><span id="totalCount">0</span><small>Total</small></div>
-                <div class="stat"><span id="foundCount">0</span><small>Found</small></div>
-                <div class="stat"><span id="selectedCount">0</span><small>Selected</small></div>
+                <div class="stat" data-testid="total-count-stat">
+                    <span id="totalCount">0</span>
+                    <small>Total Images</small>
+                </div>
+                <div class="stat" data-testid="found-count-stat">
+                    <span id="foundCount">0</span>
+                    <small>Found</small>
+                </div>
+                <div class="stat" data-testid="selected-count-stat">
+                    <span id="selectedCount">0</span>
+                    <small>Selected</small>
+                </div>
+            </div>
+
+            <div class="bulk-actions" id="bulkActions" style="display: none;">
+                <button class="btn btn-danger" onclick="bulkDelete()" data-testid="bulk-delete-button">
+                    <span>🗑️ Delete Selected (<span id="bulkDeleteCount">0</span>)</span>
+                </button>
+                <button class="btn btn-secondary" onclick="clearSelection()" data-testid="clear-selection-button">
+                    <span>✖️ Clear Selection</span>
+                </button>
             </div>
         </header>
 
-        <input type="file" id="fileInput" accept="image/*" multiple hidden onchange="handleFileUpload(event)">
+        <input type="file" id="fileInput" accept="image/*" multiple style="display: none;" onchange="handleFileUpload(event)">
 
         <!-- Drop Zone -->
-        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-            <p>📂 Drag and drop images here, or click to upload</p>
+        <div class="dropzone" id="dropzone" data-testid="dropzone">
+            <div class="dropzone-content">
+                <div class="dropzone-icon">📂</div>
+                <p class="dropzone-text">Drag and drop images here</p>
+                <p class="dropzone-subtext">or click anywhere to browse</p>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div class="loading-container" id="loadingContainer" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Loading images...</p>
+            <p id="loadingProgress" class="loading-progress"></p>
         </div>
 
         <!-- Image Grid (main view) -->
-        <div class="image-grid" id="imageGrid"></div>
+        <div class="image-grid" id="imageGrid" data-testid="image-grid"></div>
 
         <!-- Admin Table (hidden by default) -->
-        <div class="admin-panel" id="adminPanel" style="display:none;">
+        <div class="admin-panel" id="adminPanel" style="display:none;" data-testid="admin-panel">
             <div class="admin-header">
-                <h2>🗄️ Database Admin</h2>
-                <button class="btn btn-secondary" onclick="toggleAdmin()">← Back</button>
+                <h2>🗄️ Database Admin Panel</h2>
+                <button class="btn btn-secondary" onclick="toggleAdmin()" data-testid="admin-back-button">
+                    <span>← Back to Gallery</span>
+                </button>
             </div>
-            <table class="admin-table">
-                <thead>
-                    <tr><th>Image</th><th>Name</th><th>Date</th><th>Actions</th></tr>
-                </thead>
-                <tbody id="adminTableBody"></tbody>
-            </table>
+            <div class="table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Preview</th>
+                            <th>Name</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminTableBody"></tbody>
+                </table>
+            </div>
         </div>
 
         <!-- View Modal -->
-        <div class="modal" id="viewModal">
+        <div class="modal" id="viewModal" data-testid="view-modal">
             <div class="modal-content modal-large">
-                <button class="modal-close" onclick="closeModal('viewModal')">✕</button>
-                <img id="viewImage" src="" alt="">
+                <button class="modal-close" onclick="closeModal('viewModal')" data-testid="close-view-modal">✕</button>
+                <div class="modal-image-container">
+                    <img id="viewImage" alt="Full size image">
+                </div>
                 <div class="modal-info">
                     <h3 id="viewName"></h3>
-                    <p id="viewDate"></p>
+                    <p>📅 <span id="viewDate"></span></p>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="downloadImage()" data-testid="download-image-button">
+                        <span>⬇️ Download</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeModal('viewModal')" data-testid="close-view-button">
+                        <span>Close</span>
+                    </button>
                 </div>
             </div>
         </div>
 
         <!-- Edit Modal -->
-        <div class="modal" id="editModal">
+        <div class="modal" id="editModal" data-testid="edit-modal">
             <div class="modal-content">
-                <button class="modal-close" onclick="closeModal('editModal')">✕</button>
-                <h3>Edit Image</h3>
-                <label>Name</label>
-                <input type="text" id="editName" class="input">
-                <label>Date</label>
-                <input type="date" id="editDate" class="input">
-                <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveEdit()">Save</button>
-                </div>
+                <button class="modal-close" onclick="closeModal('editModal')" data-testid="close-edit-modal">✕</button>
+                <h3>✏️ Edit Image Details</h3>
+                <form onsubmit="event.preventDefault(); saveEdit();">
+                    <label>Name</label>
+                    <input type="text" id="editName" class="input" required data-testid="edit-name-input">
+                    
+                    <label>Date</label>
+                    <input type="date" id="editDate" class="input" data-testid="edit-date-input">
+                    
+                    <div class="modal-actions">
+                        <button type="submit" class="btn btn-primary" data-testid="save-edit-button">
+                            <span>💾 Save Changes</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')" data-testid="cancel-edit-button">
+                            <span>Cancel</span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
 
         <!-- Delete Confirm Modal -->
-        <div class="modal" id="deleteModal">
+        <div class="modal" id="deleteModal" data-testid="delete-modal">
             <div class="modal-content">
-                <h3>Delete Image</h3>
-                <p>Are you sure? This cannot be undone.</p>
+                <button class="modal-close" onclick="closeModal('deleteModal')" data-testid="close-delete-modal">✕</button>
+                <div class="delete-confirm">
+                    <div class="delete-icon">🗑️</div>
+                    <h3>Delete Image?</h3>
+                    <p>This action cannot be undone. Are you sure you want to delete this image?</p>
+                </div>
                 <div class="modal-actions">
-                    <button class="btn btn-secondary" onclick="closeModal('deleteModal')">Cancel</button>
-                    <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+                    <button class="btn btn-danger" onclick="confirmDelete()" data-testid="confirm-delete-button">
+                        <span>Delete</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeModal('deleteModal')" data-testid="cancel-delete-button">
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
         </div>
 
         <!-- Camera Modal -->
-        <div class="modal" id="cameraModal">
+        <div class="modal" id="cameraModal" data-testid="camera-modal">
             <div class="modal-content modal-large">
-                <button class="modal-close" onclick="closeCamera()">✕</button>
-                <h3>Camera Capture</h3>
-                <video id="cameraVideo" autoplay playsinline></video>
-                <canvas id="cameraCanvas" hidden></canvas>
+                <button class="modal-close" onclick="closeCamera()" data-testid="close-camera-modal">✕</button>
+                <h3>📷 Capture Photo</h3>
+                <div class="camera-container">
+                    <video id="cameraVideo" autoplay playsinline></video>
+                    <canvas id="cameraCanvas" style="display: none;"></canvas>
+                </div>
                 <div class="modal-actions">
-                    <button class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
-                    <button class="btn btn-secondary" onclick="closeCamera()">Cancel</button>
+                    <button class="btn btn-primary" onclick="capturePhoto()" data-testid="capture-photo-button">
+                        <span>📸 Capture</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeCamera()" data-testid="cancel-camera-button">
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <script src="script.js"></script>
-</body>
-</html>
